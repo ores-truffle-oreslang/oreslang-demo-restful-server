@@ -1,15 +1,31 @@
+import module telemetry from "../../../../../lib/telemetry";
 import module store from "../../../../../lib/store";
 
 define isoactor Handler as
   receive(ActorMail<String> mail): void {
     val request = http.claim(mail.value);
-    request.set_header("X-Actor-Mode", "isolated");
-    request.set_header("X-Route-File", "src/routes/rest/foo/bar/baz/delete.ores");
-    val bool exists = store.exists();
-    if exists; then store.remove(); fi
-    await request.respond(exists ? 204 : 404, "text/plain; charset=utf-8", exists ? "" : "resource not found");
-    self.end();
-    return;
+    val span = telemetry.actor_started(rt borrow request);
+    let int telemetry_status = 0;
+    try {
+      request.set_header("X-Actor-Mode", "isolated");
+      request.set_header("X-Route-File", "src/routes/rest/foo/bar/baz/delete.ores");
+      val bool exists = store.exists();
+      if exists; then store.remove(); fi
+      await request.respond(exists ? 204 : 404, "text/plain; charset=utf-8", exists ? "" : "resource not found");
+      telemetry_status = exists ? 204 : 404;
+      self.end();
+      return;
+    } catch (failure) {
+      span.event("ERROR", "handler failed");
+      if request.can_respond; then
+        await request.respond(500, "text/plain", "Internal Server Error");
+        telemetry_status = 500;
+      fi
+      self.end();
+      return;
+    } finally {
+      span.finish(telemetry_status == 0 || telemetry_status >= 500 ? "error" : "ok", telemetry_status);
+    }
   }
 end
 

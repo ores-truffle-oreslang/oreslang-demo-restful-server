@@ -29,7 +29,7 @@ Stop the server with Ctrl-C.
 
 An existing clean compiler checkout can be reused with `ORESLANG_SOURCE_DIR` if
 its commit matches `SOURCE_REF`. Otherwise setup clones and builds that exact
-revision under `.cache/`. Spin and routing are pinned Git submodules. Setup
+revision under `.cache/`. Spin, routing and oreslang-otel are pinned Git submodules. Setup
 refuses to reset an existing compiler checkout.
 
 Optional settings:
@@ -111,7 +111,7 @@ state, not OS-process isolation. The JVM transport retains the socket/FD.
 
 ## Validation
 
-`./scripts/test.sh` runs 25 real-HTTP and route-generation checks: the 10-request
+`./scripts/test.sh` runs 31 real-HTTP and route-generation checks: the 10-request
 curl sequence, error responses, HEAD/OPTIONS, persistence across a server restart,
 path mapping, unsupported method files and symlink rejection. The pinned Spin
 revision also passed its existing 55 HTTP assertions and routing golden suite.
@@ -170,3 +170,51 @@ packaging paths are supplied but not validated by these macOS results. These
 executables depend on OS system libraries and the bundled carrier library; they
 are not fully static, signed/notarized application releases. Native Image does
 not alter the demo's single-admission file-store constraints.
+## Native request telemetry
+
+`dependencies/otel` pins [oreslang-otel](https://github.com/ores-truffle-oreslang/oreslang-otel),
+whose only runtime dependency is the Oreslang standard library. Startup reads no
+telemetry credentials and needs no collector. Stdout contains JSON Lines with
+`schema: "oreslang-otel.v1"`, plus the existing human-readable startup messages.
+Filter JSON records when consuming the log stream.
+
+Every **admitted** request receives a new `X-Ores-Trace-Id` response header. Use
+that value to correlate these spans and log records:
+
+| Span | Interval |
+| --- | --- |
+| `http.server.request` | Transport admission through response closure and actor finalization, ending when the supervisor resumes |
+| `routing.dispatch` | Spin routing and dispatch call, including any scheduling within that call |
+| `actor.handle` | Handler claim/setup through awaited response and handler cleanup |
+
+Routing/actor spans are children of the request span and can overlap. Do not
+sum them to obtain total latency. Actor startup and move-to-claim delays are
+separate histogram observations, also potentially overlapping. Durations use
+monotonic nanoseconds; event timestamps use Unix milliseconds. The request span
+and `http.server.request.duration` metric share the same duration sample.
+`http.server.requests` emits one counter delta per completion;
+`http.server.errors` emits one for 5xx/incomplete outcomes. A 4xx is a completed
+HTTP request, not a server error. Status 0 denotes an incomplete/unknown outcome.
+
+The supervisor captures a read-only completion future before dispatching the
+exchange. It never reads a moved exchange. Handlers use actor-local spans and
+finally blocks; GET/HEAD shared actors and mutation isolated actors both log.
+Generated 404/405/OPTIONS responses have request and routing spans without a
+handler span. Deadline/handler failures still settle the supervisor observation.
+The demo remains serial: it waits for the admitted request to finalize before
+accepting the next. This is intentional with its one-request admission policy.
+
+Transport rejects before admission (for example oversized declared bodies or
+capacity 503s) have no guest exchange, response trace header, or per-request
+span. They remain transport counters. Process termination can interrupt exports.
+Console serialization/I/O contributes overhead, so these are instrumented
+latencies rather than uninstrumented performance benchmarks.
+
+The adapter logs registered operation names, not raw URLs/query strings, request
+bodies, cookies, authorization headers or arbitrary exception text. Incoming
+trace headers are not adopted; this version provides local correlation, not W3C
+propagation, OTLP export, or complete OpenTelemetry compatibility.
+
+The integration suite verifies header correlation, exactly one completed request
+span/metric, shared/isolated handlers, framework responses, no query leakage,
+and a deliberately induced handler I/O failure.
