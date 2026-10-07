@@ -41,6 +41,9 @@ classpath="$source_dir/target/classes:$(cat "$source_dir/target/classpath.txt")"
 "$JAVA_HOME/bin/javac" --release 21 -cp "$classpath" -d "$classes" "$root/native/src/dev/oreslang/demo/RestServerMain.java"
 platform="$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m)"
 dist="$root/dist/rest-server-$mode-$platform"
+# This is a derived build-output path (mode is allowlisted above). Start clean
+# so repeated builds cannot retain stale libraries or read-only license trees.
+rm -rf -- "$dist"
 mkdir -p "$dist/bin" "$dist/lib"
 options=(-O2 --no-fallback -H:+ReportExceptionStackTraces -Dgraalvm.locatorDisabled=true
   "-Dores.native.build-mode=$mode" '-H:IncludeResources=ores-app\.zip')
