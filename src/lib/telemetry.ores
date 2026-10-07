@@ -3,8 +3,10 @@ define module telemetry as
   pub fnc accepted(borrow HttpExchange request): otel.Span {
     val String trace = "ores-trace-" + request.request_id;
     request.set_header("X-Ores-Trace-Id", trace);
+    request.set_header("X-Request-Id", request.request_id);
+    request.set_header("X-Actor-Mode", "supervisor");
     val span = otel.start_at("oreslang-demo-restful-server", trace, request.request_id, "", "http.server.request", request.admitted_ns);
-    span.event("INFO", "supervisor.accept");
+    span.event("INFO", "supervisor.accept method=" + request.method + " request_id=" + request.request_id);
     return span;
   }
   pub fnc routing_started(String trace, String parent): otel.Span {
@@ -12,10 +14,12 @@ define module telemetry as
     span.event("INFO", "routing.dispatch");
     return span;
   }
-  pub fnc actor_started(borrow HttpExchange request): otel.Span {
+  pub fnc actor_started(borrow HttpExchange request, String mode): otel.Span {
     val span = otel.start("oreslang-demo-restful-server", "ores-trace-" + request.request_id,
       request.request_id, "actor.handle");
-    span.event("INFO", request.operation_id);
+    request.set_header("X-Actor-Mode", mode);
+    span.event("INFO", "actor.claim mode=" + mode + " method=" + request.method
+      + " operation=" + request.operation_id + " request_id=" + request.request_id);
     otel.metric("oreslang-demo-restful-server", span.trace_id(), "actor.startup", "histogram", "ns", request.actor_startup_ns);
     otel.metric("oreslang-demo-restful-server", span.trace_id(), "actor.move_to_claim", "histogram", "ns", request.move_to_claim_ns);
     return span;

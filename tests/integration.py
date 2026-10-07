@@ -4,6 +4,7 @@ import http.client
 import importlib.util
 import json
 import os
+import re
 from pathlib import Path
 import socket
 import subprocess
@@ -76,9 +77,16 @@ def main():
     with tempfile.TemporaryDirectory(prefix='ores rest "test" -') as tmp:
         directory = Path(tmp)
         with Server(directory) as server:
-            subprocess.run([str(ROOT / "scripts/curl-10.sh")],
+            curls = subprocess.run([str(ROOT / "scripts/curl-10.sh")],
                            env=dict(server.env, BASE_URL=f"http://127.0.0.1:{server.port}"),
-                           check=True, timeout=45)
+                           check=True, timeout=90, capture_output=True, text=True)
+            print(curls.stdout, end="")
+            curl_rows = [line for line in curls.stdout.splitlines() if " -> " in line]
+            assert len(curl_rows) == 10
+            assert [re.search(r"actor=(\w+)", line)[1] for line in curl_rows] == ["shared", "isolated", "shared", "isolated", "isolated", "shared", "isolated", "shared", "isolated", "isolated"]
+            curl_ids = [re.search(r"request_id=([0-9a-f-]{36})", line)[1] for line in curl_rows]
+            assert len(set(curl_ids)) == 10
+            assert all(re.search(r"time=[0-9.]+s retries=\d+", line) for line in curl_rows)
             checks += 10
             for method, path, body, headers, status in [
                 ("GET", "/not-found", None, {}, 404),
@@ -118,7 +126,8 @@ def main():
                 status, _, headers = request(server.port, method, path)
                 assert status == expected
                 trace = headers["X-ores-trace-id"]
-                assert trace.startswith("ores-trace-")
+                assert trace == "ores-trace-" + headers["X-request-id"]
+                assert headers["X-actor-mode"] == ("shared" if actor else "supervisor")
                 traces.append((trace, expected, actor))
             for _ in range(100):
                 server.log.seek(0)
@@ -129,6 +138,13 @@ def main():
                     break
                 time.sleep(0.02)
             assert 'do-not-log' not in text
+            for request_id, line in zip(curl_ids, curl_rows):
+                mode = re.search(r'actor=(\w+)', line)[1]
+                claims = [r for r in rows if r['signal'] == 'log' and r['ores_trace_id'] == 'ores-trace-' + request_id and r['body'].startswith('actor.claim ')]
+                assert len(claims) == 1
+                assert 'mode=' + mode in claims[0]['body']
+                assert 'request_id=' + request_id in claims[0]['body']
+                assert claims[0]['timestamp_unix_ms'] > 0
             assert len({t[0] for t in traces}) == len(traces)
             for trace, expected, has_actor in traces:
                 spans = [r for r in rows if r['signal'] == 'span' and r['ores_trace_id'] == trace]

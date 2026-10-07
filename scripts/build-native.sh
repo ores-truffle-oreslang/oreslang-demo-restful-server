@@ -26,7 +26,7 @@ from pathlib import Path
 import sys, zipfile
 root, output = Path(sys.argv[1]), Path(sys.argv[2])
 with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:
-    for directory in ['src', 'dependencies/spin/src', 'dependencies/spin/dependencies/http-routing/src']:
+    for directory in ['src', 'dependencies/otel/src', 'dependencies/spin/src', 'dependencies/spin/dependencies/http-routing/src']:
         for path in sorted((root / directory).rglob('*.ores')):
             if path.is_symlink():
                 raise SystemExit(f'Refusing symlinked source: {path}')

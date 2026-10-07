@@ -4,10 +4,9 @@ import module store from "../../../../../lib/store";
 define actor Handler as
   receive(ActorMail<String> mail): void {
     val request = http.claim(mail.value);
-    val span = telemetry.actor_started(rt borrow request);
+    val span = telemetry.actor_started(rt borrow request, "shared");
     let int telemetry_status = 0;
     try {
-      request.set_header("X-Actor-Mode", "shared");
       request.set_header("X-Route-File", "src/routes/rest/foo/bar/baz/get.ores");
       val bool exists = store.exists();
       val int status = exists ? 200 : 404;

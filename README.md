@@ -218,3 +218,34 @@ propagation, OTLP export, or complete OpenTelemetry compatibility.
 The integration suite verifies header correlation, exactly one completed request
 span/metric, shared/isolated handlers, framework responses, no query leakage,
 and a deliberately induced handler I/O failure.
+
+### Finding a request in stdout
+
+`curl-10.sh` prints `actor=shared|isolated`, `request_id`, `time` (seconds for
+its final HTTP attempt), and the number of admission retries. The response's
+`X-Request-Id` is the same UUID in the `actor.claim` log body; prefix it with
+`ores-trace-` to find every related JSON record. Timestamps are Unix milliseconds.
+The actor claim record includes mode, actual HTTP method, and registered operation.
+The completed `http.server.request` span includes status and duration in nanoseconds.
+Framework-generated responses use `X-Actor-Mode: supervisor` and have no actor claim.
+
+GET/HEAD handlers are shared actors; PUT/POST/PATCH/DELETE handlers are isolated
+actors. Logging passes correlation strings across ownership boundaries and creates
+spans locally; it does not share a live span or revive a moved exchange.
+
+Client timing includes network/response latency. It excludes earlier rejected
+attempts and retry sleeps; the retry count makes those delays visible. Server
+request spans include actor finalization, so they need not equal client timing.
+Use startup and transfer metrics to distinguish actor overhead from handler work.
+The single-admission file store and synchronous console export affect throughput.
+
+### Truffle's deprecated Unsafe warning
+
+The JDK 25 warning naming `NodeClassImpl$NodeFieldData` originates in the pinned
+Truffle dependency, not an Ores request handler. Truffle's maintainers explain in
+[oracle/graal#12782](https://github.com/oracle/graal/issues/12782) that its VM
+integration still requires unsafe access and that replacing the deprecated access
+path is upstream work. This application does not add direct `sun.misc.Unsafe`
+usage or silence the warning. Removing it requires a compatible upstream change
+and validation of both JVM and Native Image builds; changing HTTP ownership or
+adding `--enable-native-access` does not remove that deprecated call.

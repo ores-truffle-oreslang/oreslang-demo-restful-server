@@ -4,10 +4,9 @@ import module store from "../../../../../lib/store";
 define isoactor Handler as
   receive(ActorMail<String> mail): void {
     val request = http.claim(mail.value);
-    val span = telemetry.actor_started(rt borrow request);
+    val span = telemetry.actor_started(rt borrow request, "isolated");
     let int telemetry_status = 0;
     try {
-      request.set_header("X-Actor-Mode", "isolated");
       request.set_header("X-Route-File", "src/routes/rest/foo/bar/baz/put.ores");
       if request.header("Content-Type") != "text/plain"; then
         await request.respond(415, "text/plain", "send Content-Type: text/plain");
