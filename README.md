@@ -117,3 +117,56 @@ path mapping, unsupported method files and symlink rejection. The pinned Spin
 revision also passed its existing 55 HTTP assertions and routing golden suite.
 Validation used JDK 25 interpreter mode; native-image/optimizing-Graal performance
 was not measured for this demo.
+
+## Native AOT-only and hybrid builds
+
+Select the native capability **at build time**:
+
+```bash
+# JAVA_HOME must point to GraalVM with native-image, matching the pinned SDK.
+# ORESLANG_SOURCE_DIR must be a clean checkout at this repo's SOURCE_REF.
+./scripts/build-native.sh aot
+# Optional alternative with runtime compilation support:
+./scripts/build-native.sh hybrid
+```
+
+The build generates the route registry, embeds the fixed application/import graph,
+compiles a native application launcher, and packages the pthread carrier library
+and license notices. It produces `dist/rest-server-aot-<os>-<arch>.tar.gz` (or
+`rest-server-hybrid-...`). Python, Maven, Java, Git and compiler source are build
+requirements only. The server in the resulting archive needs none of them.
+
+After unpacking the matching platform archive:
+
+```bash
+./bin/rest-server --port=3000 --data-dir=./data
+./bin/rest-server --build-info
+# Another terminal, for the optional curl demo:
+./curl-10.sh
+```
+
+`PORT` and `DATA_DIR` also work. Runtime configuration does not regenerate the
+route registry. The native launcher extracts its embedded application into a
+private temporary directory and supplies per-process configuration. It removes
+that directory on normal termination/SIGTERM; SIGKILL may leave temporary files.
+The packaged directory can be moved independently of the build tree.
+
+AOT-only means the Java-written runtime/interpreter and reachable libraries are
+native machine code, with **no guest JIT**. Oreslang handlers remain interpreted;
+application-specific ahead-of-time machine-code lowering is a separate compiler
+feature. `--mode=hybrid`/`--mode=jit` cannot enable JIT inside an AOT-only image.
+Hybrid images accept `--mode=aot` to disable their guest JIT for a run. No external
+JVM or GraalVM installation is required for either native build.
+
+Validate the actual archive, including relocation, checksums, absent developer
+tools, a required native carrier library, mode enforcement, and HTTP persistence:
+
+```bash
+python3 tests/native_distribution.py dist/rest-server-aot-darwin-arm64.tar.gz
+```
+
+macOS ARM64 AOT-only and hybrid archives were built and tested locally. Linux
+packaging paths are supplied but not validated by these macOS results. These
+executables depend on OS system libraries and the bundled carrier library; they
+are not fully static, signed/notarized application releases. Native Image does
+not alter the demo's single-admission file-store constraints.

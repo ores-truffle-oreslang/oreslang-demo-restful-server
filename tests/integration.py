@@ -32,7 +32,19 @@ class Server:
             self.port = listener.getsockname()[1]
         self.log = (directory / "server.log").open("w+")
         self.env = dict(os.environ, PORT=str(self.port), DATA_DIR=str(directory / "data"))
-        self.process = subprocess.Popen([str(ROOT / "scripts/run-server.sh")], env=self.env,
+        native = os.environ.get("REST_SERVER_BINARY")
+        command = [native] if native else [str(ROOT / "scripts/run-server.sh")]
+        if native and os.environ.get("REST_EXECUTION_MODE"):
+            command.append("--mode=" + os.environ["REST_EXECUTION_MODE"])
+        child_env = dict(self.env)
+        if native:
+            # Prove the application does not discover Java/Python/Git/Maven from
+            # PATH or use our compiler checkout. The Python/curl test driver is
+            # outside this deployment environment.
+            for key in ["JAVA_HOME", "ORES_JAVA", "ORESLANG_SOURCE_DIR", "CLASSPATH"]:
+                child_env.pop(key, None)
+            child_env["PATH"] = "/nonexistent"
+        self.process = subprocess.Popen(command, env=child_env,
                                         stdout=self.log, stderr=self.log)
     def __enter__(self):
         for _ in range(300):
@@ -60,7 +72,7 @@ class Server:
 
 def main():
     checks = 0
-    with tempfile.TemporaryDirectory(prefix="ores-rest-test-") as tmp:
+    with tempfile.TemporaryDirectory(prefix='ores rest "test" -') as tmp:
         directory = Path(tmp)
         with Server(directory) as server:
             subprocess.run([str(ROOT / "scripts/curl-10.sh")],
