@@ -1,0 +1,19 @@
+import module store from "../../../../../lib/store";
+
+define actor Handler as
+  receive(ActorMail<String> mail): void {
+    val request = http.claim(mail.value);
+    request.set_header("X-Actor-Mode", "shared");
+    request.set_header("X-Route-File", "src/routes/rest/foo/bar/baz/get.ores");
+    val bool exists = store.exists();
+    val int status = exists ? 200 : 404;
+    val String body = exists ? store.read() : "resource not found";
+    await request.respond(status, "text/plain; charset=utf-8", body);
+    self.end();
+    return;
+  }
+end
+
+define module route as
+  pub fnc handler(): HttpHandler { return http.handler("Handler"); }
+end

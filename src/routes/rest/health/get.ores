@@ -1,0 +1,13 @@
+define actor Handler as
+  receive(ActorMail<String> mail): void {
+    val request = http.claim(mail.value);
+    request.set_header("X-Actor-Mode", "shared");
+    await request.respond(200, "application/json", "{\"status\":\"ok\"}");
+    self.end();
+    return;
+  }
+end
+
+define module route as
+  pub fnc handler(): HttpHandler { return http.handler("Handler"); }
+end

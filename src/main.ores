@@ -1,0 +1,19 @@
+import module spin from "../dependencies/spin/src/spin";
+import module routes from "./generated/routes";
+import module config from "./generated/config";
+
+pub async routine main(): void {
+  val builder = spin.builder();
+  routes.register(rt borrow mut builder);
+  val app = builder.build().unwrap();
+  // A single admitted exchange lasts through actor finalization. This protects
+  // the demo's read/modify/write file operations within this server process.
+  val server = http.listen("127.0.0.1", config.port(), 1, 65536, 10000);
+  stdio.stdout.write("Listening on http://127.0.0.1:");
+  stdio.println(server.port);
+  loop {
+    val request = await server.accept();
+    app.dispatch(request);
+  }
+  return;
+}

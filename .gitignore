@@ -1,0 +1,4 @@
+.cache/
+data/
+src/generated/
+__pycache__/
