@@ -1,27 +1,45 @@
+import module telemetry from "../../../../../lib/telemetry";
 import module store from "../../../../../lib/store";
 
 define isoactor Handler as
   receive(ActorMail<String> mail): void {
     val request = http.claim(mail.value);
-    request.set_header("X-Actor-Mode", "isolated");
-    request.set_header("X-Route-File", "src/routes/rest/foo/bar/baz/put.ores");
-    if request.header("Content-Type") != "text/plain"; then
-      await request.respond(415, "text/plain", "send Content-Type: text/plain");
+    val span = telemetry.actor_started(rt borrow request);
+    let int telemetry_status = 0;
+    try {
+      request.set_header("X-Actor-Mode", "isolated");
+      request.set_header("X-Route-File", "src/routes/rest/foo/bar/baz/put.ores");
+      if request.header("Content-Type") != "text/plain"; then
+        await request.respond(415, "text/plain", "send Content-Type: text/plain");
+        telemetry_status = 415;
+        self.end();
+        return;
+      fi
+      val String body = await request.body_text();
+      if body == ""; then
+        await request.respond(400, "text/plain", "body must not be empty");
+        telemetry_status = 400;
+        self.end();
+        return;
+      fi
+      val bool exists = store.exists();
+      store.write(body);
+      if !exists; then request.set_header("Location", "/foo/bar/baz"); fi
+      await request.respond(exists ? 200 : 201, "text/plain; charset=utf-8", body);
+      telemetry_status = exists ? 200 : 201;
       self.end();
       return;
-    fi
-    val String body = await request.body_text();
-    if body == ""; then
-      await request.respond(400, "text/plain", "body must not be empty");
+    } catch (failure) {
+      span.event("ERROR", "handler failed");
+      if request.can_respond; then
+        await request.respond(500, "text/plain", "Internal Server Error");
+        telemetry_status = 500;
+      fi
       self.end();
       return;
-    fi
-    val bool exists = store.exists();
-    store.write(body);
-    if !exists; then request.set_header("Location", "/foo/bar/baz"); fi
-    await request.respond(exists ? 200 : 201, "text/plain; charset=utf-8", body);
-    self.end();
-    return;
+    } finally {
+      span.finish(telemetry_status == 0 || telemetry_status >= 500 ? "error" : "ok", telemetry_status);
+    }
   }
 end
 
