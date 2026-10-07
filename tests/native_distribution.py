@@ -73,4 +73,4 @@ with tempfile.TemporaryDirectory(prefix='ores native relocation ') as tmp:
     libraries[0].rename(missing)
     failed = run('--port=54329')
     assert failed.returncode != 0 and 'native Oreslang carrier backend was required' in failed.stderr, failed.stderr
-    print(f'PASS: {mode} archive relocation, mode enforcement, checksums, missing-library failure and 25 HTTP/generator checks')
+    print(f'PASS: {mode} archive relocation, mode enforcement, checksums, missing-library failure and HTTP/telemetry/generator checks')
