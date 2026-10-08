@@ -1,0 +1,2 @@
+fatal: cannot change to '/Users/alexandermills/codes/ores-truffle-oreslang/oreslang-demo-restful-server/.cache/compiler-39f07082bde9d03b30502d4521944194a9d6ca86': No such file or directory
+Run scripts/setup.sh to install the pinned compiler.
