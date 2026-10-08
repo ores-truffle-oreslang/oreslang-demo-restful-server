@@ -249,3 +249,30 @@ path is upstream work. This application does not add direct `sun.misc.Unsafe`
 usage or silence the warning. Removing it requires a compatible upstream change
 and validation of both JVM and Native Image builds; changing HTTP ownership or
 adding `--enable-native-access` does not remove that deprecated call.
+
+## Async filesystem operations
+
+The store awaits `fs.exists_async`, `read_text_async`, `write_text_async`,
+`append_text_async`, and `remove_async`. Both shared GET actors and isolated
+mutation actors release their execution carriers while filesystem work runs.
+The portable runtime uses bounded host-I/O offload, not a promise of kernel
+asynchronous disk I/O. HTTP body reads and response writes already use futures.
+The one-request admission policy still serializes this demo's file-store updates.
+
+Measure a handler (the root `/` is an unregistered 404 route):
+
+```bash
+curl --max-time 10 -sS -o /dev/null \
+  -w 'status=%{http_code} connect=%{time_connect}s first_byte=%{time_starttransfer}s total=%{time_total}s\n' \
+  http://127.0.0.1:3000/health
+./scripts/curl-10.sh
+python3 scripts/benchmark.py --runs 6
+```
+
+The benchmark runs six ten-request sequences (first is warm-up), then 20 health
+requests with TCP connection, first-byte and total curl timings. `BASE_URL` selects
+the server; it creates and deletes the demo resource. Run against a demo instance.
+
+First-byte time includes connection setup and server work. It is not a direct
+filesystem or routing duration. Console telemetry remains enabled and affects
+these measurements.

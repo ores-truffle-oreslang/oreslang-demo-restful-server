@@ -21,10 +21,12 @@ define isoactor Handler as
         self.end();
         return;
       fi
-      val bool exists = store.exists();
+      val Future<bool> checking = store.exists();
+      val bool exists = await checking;
       if exists; then
-        store.append(body);
-        val String updated = store.read();
+        val Future<void> appending = store.append(body); await appending;
+        val Future<String> reading = store.read();
+        val String updated = await reading;
         await request.respond(200, "text/plain; charset=utf-8", updated);
         telemetry_status = 200;
       else

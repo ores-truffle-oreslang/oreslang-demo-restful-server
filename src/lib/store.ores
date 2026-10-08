@@ -1,9 +1,9 @@
 import module config from "../generated/config";
 
 define module store as
-  pub fnc exists(): bool { return fs.exists(config.data_path()); }
-  pub fnc read(): String { return fs.read_text(config.data_path()); }
-  pub fnc write(String value): void { fs.write_text(config.data_path(), value); return; }
-  pub fnc append(String value): void { fs.append_text(config.data_path(), value); return; }
-  pub fnc remove(): void { fs.remove(config.data_path()); return; }
+  pub fnc exists(): Future<bool> { return fs.exists_async(config.data_path()); }
+  pub fnc read(): Future<String> { return fs.read_text_async(config.data_path()); }
+  pub fnc write(String value): Future<void> { return fs.write_text_async(config.data_path(), value); }
+  pub fnc append(String value): Future<void> { return fs.append_text_async(config.data_path(), value); }
+  pub fnc remove(): Future<void> { return fs.remove_async(config.data_path()); }
 end

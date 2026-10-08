@@ -8,9 +8,14 @@ define actor Handler as
     let int telemetry_status = 0;
     try {
       request.set_header("X-Route-File", "src/routes/rest/foo/bar/baz/get.ores");
-      val bool exists = store.exists();
+      val Future<bool> checking = store.exists();
+      val bool exists = await checking;
       val int status = exists ? 200 : 404;
-      val String body = exists ? store.read() : "resource not found";
+      let String body = "resource not found";
+      if exists; then
+        val Future<String> reading = store.read();
+        body = await reading;
+      fi
       await request.respond(status, "text/plain; charset=utf-8", body);
       telemetry_status = status;
       self.end();
