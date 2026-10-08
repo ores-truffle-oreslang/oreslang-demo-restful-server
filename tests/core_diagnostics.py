@@ -2,7 +2,7 @@
 """End-to-end logging contract: real HTTP, OTel stdout, core shutdown stderr.
 
 Run after scripts/setup.sh using the pinned compiler and initialized submodules.
-The core diagnostic recorder is opt-in; this test enables both modes explicitly.
+The core diagnostic recorder is opt-in; this test checks CLI overrides of disabled environment defaults.
 """
 import json
 import os
@@ -31,9 +31,11 @@ def main():
     with tempfile.TemporaryDirectory(prefix="ores-core-log-e2e-") as tmp:
         root = Path(tmp)
         # The launcher reads these once; do not enable logging globally in tests.
-        with patch.dict(os.environ, {"ORES_CORE_PERF": "true",
-                                     "ORES_CORE_DEBUG": "true"}):
-            with Server(root) as server:
+        # Force CLI parsing to override environment defaults. If the launcher
+        # drops --core-perf/--core-debug, the required core JSONL is absent.
+        with patch.dict(os.environ, {"ORES_CORE_PERF": "false",
+                                     "ORES_CORE_DEBUG": "false"}):
+            with Server(root, extra_args=("--core-perf", "--core-debug")) as server:
                 result = subprocess.run(
                     [str(ROOT / "scripts/curl-10.sh")],
                     env=dict(server.env, BASE_URL=f"http://127.0.0.1:{server.port}"),
