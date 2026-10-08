@@ -300,6 +300,13 @@ jq -Rc 'fromjson? | select(.schema == "ores-core-perf.v1" and .kind == "phase")
   | [.phase, (.duration_ns/1000000), (.start_ns/1000000)] | @tsv' .cache/core-perf.log
 ```
 
+To capture both low-level timings and guarded core events, use
+`./scripts/run-server.sh --core-perf --core-debug`. Core debug emits
+`ores-core-debug.v1` JSONL at shutdown; `ORES_CORE_DEBUG=true` also enables
+it and `--no-core-debug` overrides that environment setting.
+The pinned source revision is still a draft and must pass exact-commit
+integration testing before benchmarks should be treated as verified.
+
 `ORES_CORE_PERF=true ./scripts/run-server.sh` is equivalent. Core diagnostics
 record fixed event names and elapsed nanoseconds only; the demo still logs
 `oreslang-otel.v1` separately when enabled. Compare overhead with core logging
