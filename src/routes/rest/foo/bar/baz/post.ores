@@ -21,12 +21,13 @@ define isoactor Handler as
         self.end();
         return;
       fi
-      val bool exists = store.exists();
+      val Future<bool> checking = store.exists();
+      val bool exists = await checking;
       if exists; then
         await request.respond(409, "text/plain", "resource already exists");
         telemetry_status = 409;
       else
-        store.write(body);
+        val Future<void> writing = store.write(body); await writing;
         request.set_header("Location", "/foo/bar/baz");
         await request.respond(201, "text/plain; charset=utf-8", body);
         telemetry_status = 201;

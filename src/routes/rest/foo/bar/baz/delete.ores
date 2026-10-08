@@ -8,8 +8,9 @@ define isoactor Handler as
     let int telemetry_status = 0;
     try {
       request.set_header("X-Route-File", "src/routes/rest/foo/bar/baz/delete.ores");
-      val bool exists = store.exists();
-      if exists; then store.remove(); fi
+      val Future<bool> checking = store.exists();
+      val bool exists = await checking;
+      if exists; then val Future<void> removing = store.remove(); await removing; fi
       await request.respond(exists ? 204 : 404, "text/plain; charset=utf-8", exists ? "" : "resource not found");
       telemetry_status = exists ? 204 : 404;
       self.end();

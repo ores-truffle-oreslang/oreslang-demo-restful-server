@@ -21,8 +21,9 @@ define isoactor Handler as
         self.end();
         return;
       fi
-      val bool exists = store.exists();
-      store.write(body);
+      val Future<bool> checking = store.exists();
+      val bool exists = await checking;
+      val Future<void> writing = store.write(body); await writing;
       if !exists; then request.set_header("Location", "/foo/bar/baz"); fi
       await request.respond(exists ? 200 : 201, "text/plain; charset=utf-8", body);
       telemetry_status = exists ? 200 : 201;
