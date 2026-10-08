@@ -28,7 +28,7 @@ def request(port, method, path, body=None, headers=None):
     raise AssertionError("server admission did not recover")
 
 class Server:
-    def __init__(self, directory):
+    def __init__(self, directory, extra_args=()):
         with socket.socket() as listener:
             listener.bind(("127.0.0.1", 0))
             self.port = listener.getsockname()[1]
@@ -38,6 +38,7 @@ class Server:
         command = [native] if native else [str(ROOT / "scripts/run-server.sh")]
         if native and os.environ.get("REST_EXECUTION_MODE"):
             command.append("--mode=" + os.environ["REST_EXECUTION_MODE"])
+        command.extend(extra_args)
         child_env = dict(self.env)
         if native:
             # Prove the application does not discover Java/Python/Git/Maven from
