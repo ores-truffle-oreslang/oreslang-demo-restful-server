@@ -5,3 +5,10 @@ aliases = ["core-perf"]
 type = "bool"
 default = "false"
 help = "Capture Oreslang core runtime timing phases to stderr at shutdown."
+
+[flags.core-debug]
+env = "ORES_CORE_DEBUG"
+aliases = ["core-debug"]
+type = "bool"
+default = "false"
+help = "Capture Oreslang core numeric debug events to stderr at shutdown."
