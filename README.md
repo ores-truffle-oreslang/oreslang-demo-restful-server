@@ -276,3 +276,32 @@ the server; it creates and deletes the demo resource. Run against a demo instanc
 First-byte time includes connection setup and server work. It is not a direct
 filesystem or routing duration. Console telemetry remains enabled and affects
 these measurements.
+
+## Core runtime performance diagnostics (experimental compiler pin)
+
+The compiler pin on this development branch targets the diagnostic implementation
+in [oreslang-source.java #451](https://github.com/ores-truffle-oreslang/oreslang-source.java/pull/451).
+This is **core runtime diagnostics**, not userland `oreslang-otel`.
+
+```sh
+export JAVA_HOME="$(/usr/libexec/java_home -v 25)"
+export PATH="$JAVA_HOME/bin:$PATH"
+export ORESLANG_SOURCE_DIR="$PWD/.cache/compiler-$(tr -d '[:space:]' < SOURCE_REF)"
+./scripts/setup.sh
+PORT=3000 ./scripts/run-server.sh --core-perf 2>&1 | tee .cache/core-perf.log
+```
+
+In another terminal run `./scripts/curl-10.sh` repeatedly. Stop the server
+with Ctrl-C to emit the bounded `ores-core-perf.v1` JSONL capture (stderr
+is included in the tee command). Inspect with:
+
+```sh
+jq -Rc 'fromjson? | select(.schema == "ores-core-perf.v1" and .kind == "phase")
+  | [.phase, (.duration_ns/1000000), (.start_ns/1000000)] | @tsv' .cache/core-perf.log
+```
+
+`ORES_CORE_PERF=true ./scripts/run-server.sh` is equivalent. Core diagnostics
+record fixed event names and elapsed nanoseconds only; the demo still logs
+`oreslang-otel.v1` separately when enabled. Compare overhead with core logging
+off as well as on. The current capture flushes **on graceful JVM shutdown**,
+not continuously.
