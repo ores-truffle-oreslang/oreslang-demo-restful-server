@@ -1,0 +1,7 @@
+# Canonical flags-2-env schema (.cli-flags.toml).
+[flags.core-perf]
+env = "ORES_CORE_PERF"
+aliases = ["core-perf"]
+type = "bool"
+default = "false"
+help = "Capture Oreslang core runtime timing phases to stderr at shutdown."
