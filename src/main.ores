@@ -2,6 +2,8 @@ import module spin from "../dependencies/spin/src/spin";
 import module routes from "./generated/routes";
 import module config from "./generated/config";
 
+import module telemetry from "./lib/telemetry";
+
 pub async routine main(): void {
   val builder = spin.builder();
   routes.register(rt borrow mut builder);
@@ -13,7 +15,13 @@ pub async routine main(): void {
   stdio.println(server.port);
   loop {
     val request = await server.accept();
+    val span = telemetry.accepted(rt borrow request);
+    val completion = request.completion;
+    val routing_span = telemetry.routing_started(span.trace_id(), span.span_id());
     app.dispatch(request);
+    routing_span.finish("ok", 0);
+    val int status = await completion;
+    telemetry.completed(rt borrow mut span, status);
   }
   return;
 }

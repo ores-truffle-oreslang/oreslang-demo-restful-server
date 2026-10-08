@@ -29,7 +29,7 @@ Stop the server with Ctrl-C.
 
 An existing clean compiler checkout can be reused with `ORESLANG_SOURCE_DIR` if
 its commit matches `SOURCE_REF`. Otherwise setup clones and builds that exact
-revision under `.cache/`. Spin and routing are pinned Git submodules. Setup
+revision under `.cache/`. Spin, routing and oreslang-otel are pinned Git submodules. Setup
 refuses to reset an existing compiler checkout.
 
 Optional settings:
@@ -111,9 +111,141 @@ state, not OS-process isolation. The JVM transport retains the socket/FD.
 
 ## Validation
 
-`./scripts/test.sh` runs 25 real-HTTP and route-generation checks: the 10-request
+`./scripts/test.sh` runs 31 real-HTTP and route-generation checks: the 10-request
 curl sequence, error responses, HEAD/OPTIONS, persistence across a server restart,
 path mapping, unsupported method files and symlink rejection. The pinned Spin
 revision also passed its existing 55 HTTP assertions and routing golden suite.
 Validation used JDK 25 interpreter mode; native-image/optimizing-Graal performance
 was not measured for this demo.
+
+## Native AOT-only and hybrid builds
+
+Select the native capability **at build time**:
+
+```bash
+# JAVA_HOME must point to GraalVM with native-image, matching the pinned SDK.
+# ORESLANG_SOURCE_DIR must be a clean checkout at this repo's SOURCE_REF.
+./scripts/build-native.sh aot
+# Optional alternative with runtime compilation support:
+./scripts/build-native.sh hybrid
+```
+
+The build generates the route registry, embeds the fixed application/import graph,
+compiles a native application launcher, and packages the pthread carrier library
+and license notices. It produces `dist/rest-server-aot-<os>-<arch>.tar.gz` (or
+`rest-server-hybrid-...`). Python, Maven, Java, Git and compiler source are build
+requirements only. The server in the resulting archive needs none of them.
+
+After unpacking the matching platform archive:
+
+```bash
+./bin/rest-server --port=3000 --data-dir=./data
+./bin/rest-server --build-info
+# Another terminal, for the optional curl demo:
+./curl-10.sh
+```
+
+`PORT` and `DATA_DIR` also work. Runtime configuration does not regenerate the
+route registry. The native launcher extracts its embedded application into a
+private temporary directory and supplies per-process configuration. It removes
+that directory on normal termination/SIGTERM; SIGKILL may leave temporary files.
+The packaged directory can be moved independently of the build tree.
+
+AOT-only means the Java-written runtime/interpreter and reachable libraries are
+native machine code, with **no guest JIT**. Oreslang handlers remain interpreted;
+application-specific ahead-of-time machine-code lowering is a separate compiler
+feature. `--mode=hybrid`/`--mode=jit` cannot enable JIT inside an AOT-only image.
+Hybrid images accept `--mode=aot` to disable their guest JIT for a run. No external
+JVM or GraalVM installation is required for either native build.
+
+Validate the actual archive, including relocation, checksums, absent developer
+tools, a required native carrier library, mode enforcement, and HTTP persistence:
+
+```bash
+python3 tests/native_distribution.py dist/rest-server-aot-darwin-arm64.tar.gz
+```
+
+macOS ARM64 AOT-only and hybrid archives were built and tested locally. Linux
+packaging paths are supplied but not validated by these macOS results. These
+executables depend on OS system libraries and the bundled carrier library; they
+are not fully static, signed/notarized application releases. Native Image does
+not alter the demo's single-admission file-store constraints.
+## Native request telemetry
+
+`dependencies/otel` pins [oreslang-otel](https://github.com/ores-truffle-oreslang/oreslang-otel),
+whose only runtime dependency is the Oreslang standard library. Startup reads no
+telemetry credentials and needs no collector. Stdout contains JSON Lines with
+`schema: "oreslang-otel.v1"`, plus the existing human-readable startup messages.
+Filter JSON records when consuming the log stream.
+
+Every **admitted** request receives a new `X-Ores-Trace-Id` response header. Use
+that value to correlate these spans and log records:
+
+| Span | Interval |
+| --- | --- |
+| `http.server.request` | Transport admission through response closure and actor finalization, ending when the supervisor resumes |
+| `routing.dispatch` | Spin routing and dispatch call, including any scheduling within that call |
+| `actor.handle` | Handler claim/setup through awaited response and handler cleanup |
+
+Routing/actor spans are children of the request span and can overlap. Do not
+sum them to obtain total latency. Actor startup and move-to-claim delays are
+separate histogram observations, also potentially overlapping. Durations use
+monotonic nanoseconds; event timestamps use Unix milliseconds. The request span
+and `http.server.request.duration` metric share the same duration sample.
+`http.server.requests` emits one counter delta per completion;
+`http.server.errors` emits one for 5xx/incomplete outcomes. A 4xx is a completed
+HTTP request, not a server error. Status 0 denotes an incomplete/unknown outcome.
+
+The supervisor captures a read-only completion future before dispatching the
+exchange. It never reads a moved exchange. Handlers use actor-local spans and
+finally blocks; GET/HEAD shared actors and mutation isolated actors both log.
+Generated 404/405/OPTIONS responses have request and routing spans without a
+handler span. Deadline/handler failures still settle the supervisor observation.
+The demo remains serial: it waits for the admitted request to finalize before
+accepting the next. This is intentional with its one-request admission policy.
+
+Transport rejects before admission (for example oversized declared bodies or
+capacity 503s) have no guest exchange, response trace header, or per-request
+span. They remain transport counters. Process termination can interrupt exports.
+Console serialization/I/O contributes overhead, so these are instrumented
+latencies rather than uninstrumented performance benchmarks.
+
+The adapter logs registered operation names, not raw URLs/query strings, request
+bodies, cookies, authorization headers or arbitrary exception text. Incoming
+trace headers are not adopted; this version provides local correlation, not W3C
+propagation, OTLP export, or complete OpenTelemetry compatibility.
+
+The integration suite verifies header correlation, exactly one completed request
+span/metric, shared/isolated handlers, framework responses, no query leakage,
+and a deliberately induced handler I/O failure.
+
+### Finding a request in stdout
+
+`curl-10.sh` prints `actor=shared|isolated`, `request_id`, `time` (seconds for
+its final HTTP attempt), and the number of admission retries. The response's
+`X-Request-Id` is the same UUID in the `actor.claim` log body; prefix it with
+`ores-trace-` to find every related JSON record. Timestamps are Unix milliseconds.
+The actor claim record includes mode, actual HTTP method, and registered operation.
+The completed `http.server.request` span includes status and duration in nanoseconds.
+Framework-generated responses use `X-Actor-Mode: supervisor` and have no actor claim.
+
+GET/HEAD handlers are shared actors; PUT/POST/PATCH/DELETE handlers are isolated
+actors. Logging passes correlation strings across ownership boundaries and creates
+spans locally; it does not share a live span or revive a moved exchange.
+
+Client timing includes network/response latency. It excludes earlier rejected
+attempts and retry sleeps; the retry count makes those delays visible. Server
+request spans include actor finalization, so they need not equal client timing.
+Use startup and transfer metrics to distinguish actor overhead from handler work.
+The single-admission file store and synchronous console export affect throughput.
+
+### Truffle's deprecated Unsafe warning
+
+The JDK 25 warning naming `NodeClassImpl$NodeFieldData` originates in the pinned
+Truffle dependency, not an Ores request handler. Truffle's maintainers explain in
+[oracle/graal#12782](https://github.com/oracle/graal/issues/12782) that its VM
+integration still requires unsafe access and that replacing the deprecated access
+path is upstream work. This application does not add direct `sun.misc.Unsafe`
+usage or silence the warning. Removing it requires a compatible upstream change
+and validation of both JVM and Native Image builds; changing HTTP ownership or
+adding `--enable-native-access` does not remove that deprecated call.
