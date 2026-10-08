@@ -111,7 +111,7 @@ state, not OS-process isolation. The JVM transport retains the socket/FD.
 
 ## Validation
 
-`./scripts/test.sh` runs 31 real-HTTP and route-generation checks: the 10-request
+`./scripts/test.sh` runs the original 31 real-HTTP and route-generation checks plus an opt-in core/userland diagnostic integration check: the 10-request
 curl sequence, error responses, HEAD/OPTIONS, persistence across a server restart,
 path mapping, unsupported method files and symlink rejection. The pinned Spin
 revision also passed its existing 55 HTTP assertions and routing golden suite.
@@ -306,6 +306,57 @@ To capture both low-level timings and guarded core events, use
 it and `--no-core-debug` overrides that environment setting.
 The pinned source revision is still a draft and must pass exact-commit
 integration testing before benchmarks should be treated as verified.
+
+The automated diagnostic check uses the normal ten-request script, waits for
+the userland request spans, gracefully terminates the server and verifies that
+both core JSONL schemas were exported at shutdown, including fixed-name HTTP
+phase timings and numeric debug events. It also checks that core records
+contain no request path, body or trace ID:
+
+```sh
+./scripts/test.sh
+# Or just the dedicated combined-logging test:
+python3 tests/core_diagnostics.py
+```
+
+### Comparing timing layers
+
+Capture a baseline **with core diagnostics disabled** first. Userland OTel
+serialization remains enabled in both runs, so this measures incremental core
+instrumentation overhead, not the cost of enabling all telemetry. In terminal 1:
+
+```sh
+./scripts/run-server.sh --no-core-perf --no-core-debug 2>&1 | tee .cache/baseline.log
+```
+
+In terminal 2 run `python3 scripts/benchmark.py --runs 6`, save the JSON
+result and stop the server. Then restart terminal 1 with:
+
+```sh
+./scripts/run-server.sh --core-perf --core-debug 2>&1 | tee .cache/core-on.log
+```
+
+Repeat the same benchmark workload and stop the server gracefully to export
+the bounded core capture. To inspect the two independent timing namespaces:
+
+```sh
+# Core host/runtime phases (start_ns is relative to recorder installation).
+jq -Rr 'fromjson? | select(.schema == "ores-core-perf.v1" and .kind == "phase")
+  | [.phase, (.duration_ns/1000000)] | @tsv' .cache/core-on.log
+
+# Userland spans, trace-correlated in oreslang-otel.v1 only.
+jq -Rr 'fromjson? | select(.schema == "oreslang-otel.v1" and .signal == "span")
+  | [.ores_trace_id, .name, (.duration_ns/1000000)] | @tsv' .cache/core-on.log
+```
+
+These are **not** additive timings: phases/spans can overlap, and the core
+recorder currently has no request-scoped trace ID. Do not subtract one phase
+from another or infer a per-request core/userland waterfall. Compare cold
+startup and HTTP handoff phases separately from warm request latency, and
+repeat runs with consistent request counts and server conditions. Core capture
+keeps only the first 8192 events and does not represent an entire high-volume
+benchmark.
+
 
 `ORES_CORE_PERF=true ./scripts/run-server.sh` is equivalent. Core diagnostics
 record fixed event names and elapsed nanoseconds only; the demo still logs
