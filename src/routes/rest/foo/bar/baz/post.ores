@@ -1,0 +1,34 @@
+import module store from "../../../../../lib/store";
+
+define isoactor Handler as
+  receive(ActorMail<String> mail): void {
+    val request = http.claim(mail.value);
+    request.set_header("X-Actor-Mode", "isolated");
+    request.set_header("X-Route-File", "src/routes/rest/foo/bar/baz/post.ores");
+    if request.header("Content-Type") != "text/plain"; then
+      await request.respond(415, "text/plain", "send Content-Type: text/plain");
+      self.end();
+      return;
+    fi
+    val String body = await request.body_text();
+    if body == ""; then
+      await request.respond(400, "text/plain", "body must not be empty");
+      self.end();
+      return;
+    fi
+    val bool exists = store.exists();
+    if exists; then
+      await request.respond(409, "text/plain", "resource already exists");
+    else
+      store.write(body);
+      request.set_header("Location", "/foo/bar/baz");
+      await request.respond(201, "text/plain; charset=utf-8", body);
+    fi
+    self.end();
+    return;
+  }
+end
+
+define module route as
+  pub fnc handler(): HttpHandler { return http.handler("Handler"); }
+end

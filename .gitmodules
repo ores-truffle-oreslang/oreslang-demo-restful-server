@@ -1,0 +1,3 @@
+[submodule "dependencies/spin"]
+	path = dependencies/spin
+	url = https://github.com/ores-truffle-oreslang/oreslang-spin.git

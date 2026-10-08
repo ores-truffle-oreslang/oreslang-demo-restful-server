@@ -1,0 +1,9 @@
+import module config from "../generated/config";
+
+define module store as
+  pub fnc exists(): bool { return fs.exists(config.data_path()); }
+  pub fnc read(): String { return fs.read_text(config.data_path()); }
+  pub fnc write(String value): void { fs.write_text(config.data_path(), value); return; }
+  pub fnc append(String value): void { fs.append_text(config.data_path(), value); return; }
+  pub fnc remove(): void { fs.remove(config.data_path()); return; }
+end
