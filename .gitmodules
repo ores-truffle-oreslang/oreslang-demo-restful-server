@@ -1,3 +1,6 @@
 [submodule "dependencies/spin"]
 	path = dependencies/spin
 	url = https://github.com/ores-truffle-oreslang/oreslang-spin.git
+[submodule "dependencies/otel"]
+	path = dependencies/otel
+	url = https://github.com/ores-truffle-oreslang/oreslang-otel.git

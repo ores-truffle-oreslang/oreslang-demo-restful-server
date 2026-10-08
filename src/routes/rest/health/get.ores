@@ -1,10 +1,25 @@
+import module telemetry from "../../../lib/telemetry";
 define actor Handler as
   receive(ActorMail<String> mail): void {
     val request = http.claim(mail.value);
-    request.set_header("X-Actor-Mode", "shared");
-    await request.respond(200, "application/json", "{\"status\":\"ok\"}");
-    self.end();
-    return;
+    val span = telemetry.actor_started(rt borrow request, "shared");
+    let int telemetry_status = 0;
+    try {
+      await request.respond(200, "application/json", "{\"status\":\"ok\"}");
+      telemetry_status = 200;
+      self.end();
+      return;
+    } catch (failure) {
+      span.event("ERROR", "handler failed");
+      if request.can_respond; then
+        await request.respond(500, "text/plain", "Internal Server Error");
+        telemetry_status = 500;
+      fi
+      self.end();
+      return;
+    } finally {
+      span.finish(telemetry_status == 0 || telemetry_status >= 500 ? "error" : "ok", telemetry_status);
+    }
   }
 end
 
