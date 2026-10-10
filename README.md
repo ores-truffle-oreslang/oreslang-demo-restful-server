@@ -363,3 +363,9 @@ record fixed event names and elapsed nanoseconds only; the demo still logs
 `oreslang-otel.v1` separately when enabled. Compare overhead with core logging
 off as well as on. The current capture flushes **on graceful JVM shutdown**,
 not continuously.
+
+## Strict local core profiling
+
+`./scripts/profile-core.sh` now runs the Rust profiler and requires Cargo. It performs six ten-request rounds per mode, excludes the first round from warm statistics, verifies 60 unique completed OTel request spans in each mode, and requires enabled core stdout/lifetime phases and debug records after SIGTERM. Baseline diagnostics must remain absent. Invalid/missing timing rows and malformed structured records fail the run. It binds a temporary loopback port and retains raw client logs, server logs, warm samples, runtime/revision information and JSON summaries in `.cache/profile-rust-*`. Existing `JAVA_HOME`, `ORES_JAVA` and `ORESLANG_SOURCE_DIR` select the exact pinned compiler.
+
+Run `cargo test --locked --manifest-path tools/profile/Cargo.toml` for percentile and malformed-sample checks. Client times describe the final curl attempt and exclude earlier admission retries and sleeps; overlapping core phases must not be summed. This compares diagnostic modes with userland telemetry enabled in both.
