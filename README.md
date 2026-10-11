@@ -118,8 +118,9 @@ state, not OS-process isolation. The JVM transport retains the socket/FD.
 
 `./scripts/test.sh` runs the original 31 real-HTTP and route-generation checks plus an opt-in core/userland diagnostic integration check: the 10-request
 curl sequence, error responses, HEAD/OPTIONS, persistence across a server restart,
-path mapping, unsupported method files and symlink rejection. The pinned Spin
-revision also passed its existing 55 HTTP assertions and routing golden suite.
+path mapping, unsupported method files and symlink rejection. The previous Spin
+revision had passed its 55 HTTP assertions and routing golden suite; the newly
+pinned dependency combination has not yet been exercised end-to-end.
 The previous compiler pin was exercised using JDK 25 interpreter mode.
 The new dependency pins require a fresh JDK 25 full integration run; native-image/
 optimizing-Graal performance is not established by the upgrade alone.
@@ -171,8 +172,10 @@ tools, a required native carrier library, mode enforcement, and HTTP persistence
 python3 tests/native_distribution.py dist/rest-server-aot-darwin-arm64.tar.gz
 ```
 
-macOS ARM64 AOT-only and hybrid archives were built and tested locally. Linux
-packaging paths are supplied but not validated by these macOS results. These
+Before this pin refresh, macOS ARM64 AOT-only and hybrid archives were
+built and tested locally. Those results do not validate the newly pinned Java
+and Spin revisions. Linux packaging paths have not been validated by those
+macOS results. These
 executables depend on OS system libraries and the bundled carrier library; they
 are not fully static, signed/notarized application releases. Native Image does
 not alter the demo's single-admission file-store constraints.
