@@ -76,3 +76,9 @@ Git-failure cases using temporary local repositories, including a nested
 Git submodule. Runtime authentication and JDK 25 HTTP/AOT/hybrid validation
 remain separate required evidence; offline regression success does not
 establish runtime compatibility.
+
+Setup also validates the exact SHA and unchanged submodule declarations *before*
+starting a network fetch or checking out private compiler code. A modified
+`.gitmodules` or malformed `SOURCE_REF` cannot direct setup to an unexpected
+remote. A pre-existing compiler path (including a symbolic link) is never
+silently replaced by cloning.

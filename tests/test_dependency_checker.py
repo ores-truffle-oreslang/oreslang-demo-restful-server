@@ -125,6 +125,33 @@ class DependencyCheckerTests(unittest.TestCase):
             '-c', 'user.name=Offline Test', 'commit', '-qm', 'unexpected')
         self.assertNotEqual(self.check('--all').returncode, 0)
 
+    def test_setup_rejects_invalid_pin_before_fetching(self):
+        shutil.copy2(SOURCE_ROOT / 'scripts/setup.sh', self.root / 'scripts/setup.sh')
+        (self.root / 'SOURCE_REF').write_text('malformed\n')
+        marker = self.root / 'git-called'
+        fakebin = self.root / 'fakebin'
+        fakebin.mkdir()
+        fakegit = fakebin / 'git'
+        fakegit.write_text('#!/bin/sh\necho called >> "' + str(marker) + '"\nexit 88\n')
+        fakegit.chmod(0o755)
+        env = dict(os.environ, PATH=str(fakebin) + os.pathsep + os.environ['PATH'],
+                   ORESLANG_SOURCE_DIR=str(self.compiler))
+        proc = subprocess.run(['bash', str(self.root / 'scripts/setup.sh')],
+                              env=env, capture_output=True, text=True)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertFalse(marker.exists(), 'Untrusted pin triggered Git before validation')
+
+    def test_setup_rejects_dirty_gitmodules_before_submodule_update(self):
+        shutil.copy2(SOURCE_ROOT / 'scripts/setup.sh', self.root / 'scripts/setup.sh')
+        self.make_submodules()
+        with (self.root / '.gitmodules').open('a') as stream:
+            stream.write('\n# unreviewed update URL\n')
+        output = subprocess.run(['bash', str(self.root / 'scripts/setup.sh')],
+                                env=dict(os.environ, ORESLANG_SOURCE_DIR=str(self.compiler)),
+                                capture_output=True, text=True)
+        self.assertNotEqual(output.returncode, 0)
+        self.assertIn('refusing dependency fetch', output.stderr)
+
     def test_rejects_absent_submodules(self):
         subprocess.run(['git', 'init', '-q', str(self.root)], check=True)
         self.assertNotEqual(self.check('--all').returncode, 0)
