@@ -4,11 +4,12 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 mode="${1:-aot}"
 case "$mode" in aot|hybrid) ;; *) echo 'Usage: scripts/build-native.sh [aot|hybrid]' >&2; exit 64;; esac
 : "${JAVA_HOME:?Set JAVA_HOME to GraalVM with native-image (matching the pinned SDK)}"
-: "${ORESLANG_SOURCE_DIR:?Set ORESLANG_SOURCE_DIR to the compiler checkout}"
-source_dir="$(cd "$ORESLANG_SOURCE_DIR" && pwd -P)"
+expected="$(tr -d '[:space:]' < "$root/SOURCE_REF")"
+source_dir="${ORESLANG_SOURCE_DIR:-$root/.cache/compiler-$expected}"
+[[ -d "$source_dir/.git" ]] || { echo 'Run scripts/setup.sh to install the pinned compiler.' >&2; exit 65; }
+source_dir="$(cd "$source_dir" && pwd -P)"
 [[ -z "$(git -C "$root" status --porcelain)" ]] || { echo 'Application checkout must be clean so artifact provenance is exact.' >&2; exit 65; }
 [[ -x "$JAVA_HOME/bin/native-image" ]] || { echo 'GraalVM native-image is required on the build machine.' >&2; exit 69; }
-expected="$(tr -d '[:space:]' < "$root/SOURCE_REF")"
 [[ "$(git -C "$source_dir" rev-parse HEAD)" == "$expected" ]] || { echo 'Compiler does not match SOURCE_REF.' >&2; exit 65; }
 [[ -z "$(git -C "$source_dir" status --porcelain)" ]] || { echo 'Compiler must be clean.' >&2; exit 65; }
 if git -C "$root" submodule status --recursive | grep -Eq '^[+-U]'; then

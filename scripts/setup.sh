@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-source_dir="${ORESLANG_SOURCE_DIR:-$root/.cache/oreslang-source.java}"
 expected="$(tr -d '[:space:]' < "$root/SOURCE_REF")"
+# A per-SHA default leaves an earlier pinned compiler checkout undisturbed.
+source_dir="${ORESLANG_SOURCE_DIR:-$root/.cache/compiler-$expected}"
 git -C "$root" submodule update --init --recursive
 if [[ ! -d "$source_dir/.git" ]]; then
   mkdir -p "$(dirname "$source_dir")"
