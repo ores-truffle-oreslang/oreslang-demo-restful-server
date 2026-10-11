@@ -11,7 +11,7 @@ source_dir="$(cd "$source_dir" && pwd -P)"
 application_status="$(git -C "$root" status --porcelain --untracked-files=all)" || { echo 'Cannot inspect application checkout.' >&2; exit 65; }
 [[ -z "$application_status" ]] || { echo 'Application checkout must be clean so artifact provenance is exact.' >&2; exit 65; }
 [[ -x "$JAVA_HOME/bin/native-image" ]] || { echo 'GraalVM native-image is required on the build machine.' >&2; exit 69; }
-mvn -q -f "$source_dir/pom.xml" -DskipTests package dependency:build-classpath -Dmdep.outputFile=target/classpath.txt
+mvn -q -f "$source_dir/pom.xml" -DskipTests clean package dependency:build-classpath -Dmdep.outputFile=target/classpath.txt
 build="$root/.cache/native-$mode"
 classes="$build/classes"
 mkdir -p "$classes"

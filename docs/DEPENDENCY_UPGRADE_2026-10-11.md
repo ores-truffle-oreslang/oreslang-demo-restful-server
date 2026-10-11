@@ -82,3 +82,9 @@ starting a network fetch or checking out private compiler code. A modified
 `.gitmodules` or malformed `SOURCE_REF` cannot direct setup to an unexpected
 remote. A pre-existing compiler path (including a symbolic link) is never
 silently replaced by cloning.
+
+Compiler setup and native packaging now invoke Maven `clean package` to
+discard stale ignored `target/classes` and classpath outputs before building.
+An exact source Git SHA alone does not authenticate ignored compiled artifacts;
+fresh compilation mitigates accidental reuse, and real JDK 25 runtime CI remains
+required to validate these rebuilds.

@@ -16,5 +16,5 @@ if [[ ! -e "$source_dir" && ! -L "$source_dir" ]]; then
   git -C "$source_dir" checkout --detach "$expected"
 fi
 bash "$root/scripts/check-deps.sh" --all
-mvn -q -f "$source_dir/pom.xml" -DskipTests package dependency:build-classpath -Dmdep.outputFile=target/classpath.txt
+mvn -q -f "$source_dir/pom.xml" -DskipTests clean package dependency:build-classpath -Dmdep.outputFile=target/classpath.txt
 echo 'Ready: ./scripts/run-server.sh (JDK 25 must also be used to run it).'

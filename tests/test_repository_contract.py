@@ -38,6 +38,11 @@ class RepositoryContract(unittest.TestCase):
             self.assertIsNotNone(match, (path, raw))
             self.assertEqual(match.group(2), path)
 
+    def test_compiler_rebuilds_from_clean_outputs(self):
+        for script in ("setup.sh", "build-native.sh"):
+            content = (ROOT / "scripts" / script).read_text(encoding="utf-8")
+            self.assertIn("-DskipTests clean package dependency:build-classpath", content)
+
     def test_scripts_use_commit_addressed_default_cache(self):
         for file in ("setup.sh", "run-server.sh", "test.sh", "build-native.sh"):
             script = (ROOT / "scripts" / file).read_text(encoding="utf-8")
