@@ -31,7 +31,9 @@ An existing clean compiler checkout can be reused with `ORESLANG_SOURCE_DIR` if
 its commit matches `SOURCE_REF`. Otherwise setup uses the commit-addressed
 `.cache/compiler-<SOURCE_REF>` checkout, preserving older compiler checkouts.
 Spin, routing and oreslang-otel are pinned Git submodules. Setup refuses to
-reset an existing compiler checkout. See
+reset an existing compiler checkout. Build/run entrypoints now reject dirty
+compiler or recursively dirty dependency trees, and fail closed on Git errors.
+See
 [the dependency upgrade record](docs/DEPENDENCY_UPGRADE_2026-10-11.md)
 for exact revisions and validation limitations.
 

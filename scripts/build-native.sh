@@ -6,15 +6,11 @@ case "$mode" in aot|hybrid) ;; *) echo 'Usage: scripts/build-native.sh [aot|hybr
 : "${JAVA_HOME:?Set JAVA_HOME to GraalVM with native-image (matching the pinned SDK)}"
 expected="$(tr -d '[:space:]' < "$root/SOURCE_REF")"
 source_dir="${ORESLANG_SOURCE_DIR:-$root/.cache/compiler-$expected}"
-[[ -d "$source_dir/.git" ]] || { echo 'Run scripts/setup.sh to install the pinned compiler.' >&2; exit 65; }
+bash "$root/scripts/check-deps.sh" --all
 source_dir="$(cd "$source_dir" && pwd -P)"
-[[ -z "$(git -C "$root" status --porcelain)" ]] || { echo 'Application checkout must be clean so artifact provenance is exact.' >&2; exit 65; }
+application_status="$(git -C "$root" status --porcelain --untracked-files=all)" || { echo 'Cannot inspect application checkout.' >&2; exit 65; }
+[[ -z "$application_status" ]] || { echo 'Application checkout must be clean so artifact provenance is exact.' >&2; exit 65; }
 [[ -x "$JAVA_HOME/bin/native-image" ]] || { echo 'GraalVM native-image is required on the build machine.' >&2; exit 69; }
-[[ "$(git -C "$source_dir" rev-parse HEAD)" == "$expected" ]] || { echo 'Compiler does not match SOURCE_REF.' >&2; exit 65; }
-[[ -z "$(git -C "$source_dir" status --porcelain)" ]] || { echo 'Compiler must be clean.' >&2; exit 65; }
-if git -C "$root" submodule status --recursive | grep -Eq '^[+-U]'; then
-  echo 'Initialize the exact dependency pins with scripts/setup.sh.' >&2; exit 65
-fi
 mvn -q -f "$source_dir/pom.xml" -DskipTests package dependency:build-classpath -Dmdep.outputFile=target/classpath.txt
 build="$root/.cache/native-$mode"
 classes="$build/classes"
@@ -29,8 +25,8 @@ root, output = Path(sys.argv[1]), Path(sys.argv[2])
 with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:
     for directory in ['src', 'dependencies/otel/src', 'dependencies/spin/src', 'dependencies/spin/dependencies/http-routing/src']:
         for path in sorted((root / directory).rglob('*.ores')):
-            if path.is_symlink():
-                raise SystemExit(f'Refusing symlinked source: {path}')
+            if path.is_symlink() or not path.resolve().is_relative_to(root.resolve()):
+                raise SystemExit(f'Refusing symlinked or escaping source: {path}')
             name = path.relative_to(root).as_posix()
             info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
             info.compress_type = zipfile.ZIP_DEFLATED

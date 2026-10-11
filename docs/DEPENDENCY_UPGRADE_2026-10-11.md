@@ -61,3 +61,18 @@ authenticated JDK 25 build and are release gates.
 * Dependency updates are not security certification. Do not merge until the
   pinned real-HTTP and native tests are run, their head commits are verified,
   and CI failures/runner allocation are understood.
+
+## Hardening follow-up
+
+All execution entrypoints now invoke `scripts/check-deps.sh --all` before
+building/running. The shared verifier rejects malformed `SOURCE_REF`, missing,
+mismatched or dirty compiler trees, uninitialized/diverged recursive gitlinks,
+modified `.gitmodules`, and modified or untracked files inside **every**
+submodule (including Spin's nested router). Git command failures are fatal,
+not silently converted into empty/clean status output.
+
+Public offline CI exercises clean, dirty, absent, mismatched, malformed and
+Git-failure cases using temporary local repositories, including a nested
+Git submodule. Runtime authentication and JDK 25 HTTP/AOT/hybrid validation
+remain separate required evidence; offline regression success does not
+establish runtime compatibility.

@@ -43,6 +43,7 @@ class RepositoryContract(unittest.TestCase):
             script = (ROOT / "scripts" / file).read_text(encoding="utf-8")
             self.assertIn(".cache/compiler-$expected", script, file)
             self.assertIn("SOURCE_REF", script, file)
+            self.assertIn("check-deps.sh", script, file)
 
 if __name__ == "__main__":
     unittest.main()

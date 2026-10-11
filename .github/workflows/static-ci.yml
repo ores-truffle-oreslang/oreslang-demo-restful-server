@@ -23,5 +23,5 @@ jobs:
         run: bash -n scripts/*.sh
       - name: Python syntax
         run: python -m compileall -q scripts tests
-      - name: Immutable pins and gitlinks
-        run: python -m unittest discover -s tests -p 'test_repository_contract.py' -v
+      - name: Immutable pins, gitlinks and fail-closed verification
+        run: python -m unittest discover -s tests -p 'test_*.py' -v

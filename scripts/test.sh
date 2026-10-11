@@ -3,7 +3,8 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 expected="$(tr -d '[:space:]' < "$root/SOURCE_REF")"
 export ORESLANG_SOURCE_DIR="${ORESLANG_SOURCE_DIR:-$root/.cache/compiler-$expected}"
-for script in setup.sh run-server.sh curl-10.sh build-native.sh; do
+bash "$root/scripts/check-deps.sh" --all
+for script in setup.sh run-server.sh curl-10.sh build-native.sh check-deps.sh; do
   bash -n "$root/scripts/$script"
 done
 python3 "$root/tests/integration.py"
