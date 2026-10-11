@@ -88,3 +88,18 @@ discard stale ignored `target/classes` and classpath outputs before building.
 An exact source Git SHA alone does not authenticate ignored compiled artifacts;
 fresh compilation mitigates accidental reuse, and real JDK 25 runtime CI remains
 required to validate these rebuilds.
+
+## Private funded-runner REST integration
+
+`tests/integration.py` accepts an optional `REST_SERVER_LAUNCHER` command
+**only for the test driver**. A dedicated private CI mirror uses it to launch
+the exact checked Oreslang app and source compiler directly when Git submodule
+Git metadata is unavailable across organization boundaries. This does not
+disable or bypass `scripts/check-deps.sh` on the ordinary setup, run, test
+or native build paths. Setting both `REST_SERVER_LAUNCHER` and
+`REST_SERVER_BINARY` is rejected.
+
+The test runner must establish exact blob provenance for the compiler,
+REST app and vendored Spin, HTTP router and OTel before executing the demo.
+A successful private mirror run validates JVM behavior only and must not be
+reported as AOT or hybrid distribution validation.
