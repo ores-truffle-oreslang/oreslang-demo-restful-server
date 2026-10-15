@@ -1,0 +1,16 @@
+name: Route generator publication contracts
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  route-publication:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Check route source publication
+        run: python3 -m unittest discover -s tests -p test_route_publication.py -v
