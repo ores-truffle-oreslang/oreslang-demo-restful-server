@@ -3,10 +3,28 @@
 import argparse
 import json
 import re
+import os
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
+
+def publish(path, text):
+    # Replacing the directory entry avoids following a stale generated symlink
+    # and keeps readers from observing a truncated generated source file.
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
+                                         prefix=".routes-", delete=False) as output:
+            temporary = Path(output.name)
+            output.write(text)
+        temporary.chmod(0o644)
+        os.replace(temporary, path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
 
 def discover(root):
     result = []
@@ -29,6 +47,8 @@ def generate(port, data_dir):
         raise ValueError("port must be in 1..65535")
     routes = discover(ROOT / "src/routes/rest")
     generated = ROOT / "src/generated"
+    if generated.is_symlink():
+        raise ValueError("generated source directory must not be a symlink")
     generated.mkdir(parents=True, exist_ok=True)
     lines = ['import module spin from "../../dependencies/spin/src/spin";',
              'import module http_routing from "../../dependencies/spin/dependencies/http-routing/src/http_routing";']
@@ -42,10 +62,10 @@ def generate(port, data_dir):
         lines.append(f'    val path_{index} = http_routing.path({json.dumps(url)}, arr[{segments}]);')
         lines.append(f'    builder.route("{method}", rt borrow path_{index}, route_{index}.handler(), 0, 0, "{method} {url}").unwrap();')
     lines += ['    return;', '  }', 'end', '']
-    (generated / "routes.ores").write_text("\n".join(lines))
+    publish(generated / "routes.ores", "\n".join(lines))
     data_dir = data_dir.resolve()
     data_dir.mkdir(parents=True, exist_ok=True)
-    (generated / "config.ores").write_text(
+    publish(generated / "config.ores",
         'define module config as\n'
         f'  pub fnc port(): int {{ return {port}; }}\n'
         f'  pub fnc data_path(): String {{ return {json.dumps(str(data_dir / "baz.txt"))}; }}\n'
