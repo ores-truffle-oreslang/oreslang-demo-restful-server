@@ -314,5 +314,20 @@ class SourceBundle(unittest.TestCase):
         self.assertFalse((Path(self.temp.name) / "fifo-rejected.zip").exists())
 
 
+    def test_irrelevant_files_still_count_toward_discovery_budget(self):
+        output, _ = self.archive("previous.zip")
+        original = output.read_bytes()
+        for i in range(8):
+            (self.root / ("src/irrelevant-" + str(i) + ".txt")).write_text("ignored")
+        saved = bundle.MAX_DISCOVERED_ENTRIES
+        try:
+            bundle.MAX_DISCOVERED_ENTRIES = 9
+            with self.assertRaisesRegex(ValueError, "too many discovered source directory entries"):
+                bundle.pack(self.root, output)
+        finally:
+            bundle.MAX_DISCOVERED_ENTRIES = saved
+        self.assertEqual(output.read_bytes(), original)
+
+
 if __name__ == "__main__":
     unittest.main()
