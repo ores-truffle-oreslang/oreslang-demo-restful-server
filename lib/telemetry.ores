@@ -1,0 +1,38 @@
+import module otel from "../../dependencies/otel/src/otel";
+define module telemetry as
+  pub fnc accepted(borrow HttpExchange request): otel.Span {
+    val String trace = "ores-trace-" + request.request_id;
+    request.set_header("X-Ores-Trace-Id", trace);
+    request.set_header("X-Request-Id", request.request_id);
+    request.set_header("X-Actor-Mode", "supervisor");
+    val span = otel.start_at("oreslang-demo-restful-server", trace, request.request_id, "", "http.server.request", request.admitted_ns);
+    span.event("INFO", "supervisor.accept method=" + request.method + " request_id=" + request.request_id);
+    return span;
+  }
+  pub fnc routing_started(String trace, String parent): otel.Span {
+    val span = otel.start("oreslang-demo-restful-server", trace, parent, "routing.dispatch");
+    span.event("INFO", "routing.dispatch");
+    return span;
+  }
+  pub fnc actor_started(borrow HttpExchange request, String mode): otel.Span {
+    val span = otel.start("oreslang-demo-restful-server", "ores-trace-" + request.request_id,
+      request.request_id, "actor.handle");
+    request.set_header("X-Actor-Mode", mode);
+    span.event("INFO", "actor.claim mode=" + mode + " method=" + request.method
+      + " operation=" + request.operation_id + " request_id=" + request.request_id);
+    otel.metric("oreslang-demo-restful-server", span.trace_id(), "actor.startup", "histogram", "ns", request.actor_startup_ns);
+    otel.metric("oreslang-demo-restful-server", span.trace_id(), "actor.move_to_claim", "histogram", "ns", request.move_to_claim_ns);
+    return span;
+  }
+  pub fnc completed(borrow mut otel.Span span, int status): void {
+    val String outcome = status == 0 || status >= 500 ? "error" : "ok";
+    span.finish(outcome, status);
+    val int duration = span.elapsed_ns();
+    otel.metric("oreslang-demo-restful-server", span.trace_id(), "http.server.request.duration", "histogram", "ns", duration);
+    otel.metric("oreslang-demo-restful-server", span.trace_id(), "http.server.requests", "counter", "1", 1);
+    if outcome == "error"; then
+      otel.metric("oreslang-demo-restful-server", span.trace_id(), "http.server.errors", "counter", "1", 1);
+    fi
+    return;
+  }
+end
