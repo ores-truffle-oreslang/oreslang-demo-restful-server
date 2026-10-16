@@ -129,8 +129,15 @@ def source_entries(root):
                 kind = "relative"
             elif import_path.startswith("@"):
                 raise ValueError("retired @/ import in source bundle: " + origin)
+            elif (import_path.startswith("/") or re.match(r"^[A-Za-z]:[/\\\\]", import_path)
+                  or import_path.startswith("file:")):
+                raise ValueError("absolute filesystem import cannot be bundled: " + origin + " -> " + import_path)
+            elif import_path.startswith("pkg:"):
+                # No zed_modules or verified lockfile is shipped in this demo ZIP.
+                raise ValueError("unbundled pkg: import is unsupported in native demo: "
+                                 + origin + " -> " + import_path)
             else:
-                # Bare/pkg:/java: imports have separate resolution rules.
+                # Bare and java: imports have their own compiler namespaces.
                 continue
             if target not in names and (target + ".ores") not in names:
                 raise ValueError(kind + " import target missing from bundle: " + origin + " -> " + import_path)
