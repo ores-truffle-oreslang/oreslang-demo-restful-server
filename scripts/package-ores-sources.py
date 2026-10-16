@@ -27,21 +27,39 @@ ZIP_EPOCH = (1980, 1, 1, 0, 0, 0)
 CONFIG_PLACEHOLDER = b"define module config as\nend\n"
 
 
-def read_bounded_regular_file(path, label):
-    """Open without following a final symlink and bound file contents."""
-    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
-    fd = os.open(path, flags)
-    with os.fdopen(fd, "rb") as stream:
-        metadata = os.fstat(stream.fileno())
-        if not stat.S_ISREG(metadata.st_mode):
-            raise ValueError("non-regular bundle input: " + label)
-        # Hardlinks can smuggle otherwise untracked outside-checkout data
-        # into the bundle, even without using symbolic links.
-        if metadata.st_nlink != 1:
-            raise ValueError("hardlinked bundle input: " + label)
-        data = stream.read(MAX_SOURCE_BYTES + 1)
+def read_bounded_regular_file(root, relative):
+    """Read a package file without following symlinks in *any* path component.
+
+    Directory file descriptors prevent a checkout ancestor from being swapped
+    to a symlink between discovery and read. O_NONBLOCK also avoids waiting
+    forever if a raced path became a FIFO instead of an ordinary file.
+    """
+    if not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "O_DIRECTORY"):
+        raise RuntimeError("native source packaging requires no-follow directory support")
+    components = PurePosixPath(relative).parts
+    if not components or any(part in ("", ".", "..") for part in components):
+        raise ValueError("invalid source archive entry: " + relative)
+    from contextlib import ExitStack
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    file_flags = os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_NONBLOCK", 0)
+    with ExitStack() as cleanup:
+        directory_fd = os.open(root, directory_flags)
+        cleanup.callback(os.close, directory_fd)
+        for name in components[:-1]:
+            child_fd = os.open(name, directory_flags, dir_fd=directory_fd)
+            cleanup.callback(os.close, child_fd)
+            directory_fd = child_fd
+        fd = os.open(components[-1], file_flags, dir_fd=directory_fd)
+        with os.fdopen(fd, "rb") as stream:
+            metadata = os.fstat(stream.fileno())
+            if not stat.S_ISREG(metadata.st_mode):
+                raise ValueError("non-regular bundle input: " + relative)
+            # Hardlinks can smuggle otherwise untracked outside-checkout data.
+            if metadata.st_nlink != 1:
+                raise ValueError("hardlinked bundle input: " + relative)
+            data = stream.read(MAX_SOURCE_BYTES + 1)
     if len(data) > MAX_SOURCE_BYTES:
-        raise ValueError("source file exceeds bundle limit: " + label)
+        raise ValueError("source file exceeds bundle limit: " + relative)
     return data
 
 
@@ -91,7 +109,7 @@ def source_entries(root):
         relative = path.relative_to(root).as_posix()
         if relative in entries:
             raise ValueError("duplicate archive path: " + relative)
-        raw_bytes = read_bounded_regular_file(path, relative)
+        raw_bytes = read_bounded_regular_file(root, relative)
         data = CONFIG_PLACEHOLDER if relative == "src/generated/config.ores" else raw_bytes
         if len(data) > MAX_SOURCE_BYTES:
             raise ValueError("source file exceeds bundle limit: " + relative)
