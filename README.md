@@ -62,6 +62,12 @@ The native source bundle also verifies that `src/main.ores` and each
 direct, single-line `+/...`, `./...`, or `../...` source import target
 exist in the embedded archive. Missing targets, parent traversal outside the
 archive, and obsolete `@/` syntax fail before replacing an output bundle.
+The demo's native archive has no verified zed-pkg installation or lockfile,
+so `pkg:` imports are rejected at packaging time. Host-absolute paths,
+including Windows drive and UNC paths, are also rejected rather than relying
+on the runtime machine's filesystem. A future package-enabled native build
+must explicitly bundle and verify the locked dependency closure.
+
 These checks complement rather than replace compiler parsing and linking.
 
 **Compatibility gate:** this branch requires Oreslang compiler support for
