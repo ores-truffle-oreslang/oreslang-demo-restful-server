@@ -339,7 +339,7 @@ class SourceBundle(unittest.TestCase):
         )
         for source in bad_statements:
             with self.subTest(source=source):
-                (self.root / "src/main.ores").write_text(source + "\\n")
+                (self.root / "src/main.ores").write_text(source + "\n")
                 output = Path(self.temp.name) / "reject-extra-import.zip"
                 with self.assertRaisesRegex(ValueError, "unsupported import declaration"):
                     bundle.pack(self.root, output)
@@ -347,7 +347,7 @@ class SourceBundle(unittest.TestCase):
 
     def test_crlf_import_and_trailing_line_comment_remain_valid(self):
         (self.root / "src/main.ores").write_bytes(
-            b'import module telemetry from "+/src/lib/telemetry"; // allowed comment\\r\\n'
+            b'import module telemetry from "+/src/lib/telemetry"; // allowed comment\r\n'
         )
         output, count = self.archive("crlf-valid.zip")
         self.assertEqual(count, 4)
