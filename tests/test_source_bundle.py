@@ -133,6 +133,8 @@ class SourceBundle(unittest.TestCase):
         bad_imports = (
             ("/tmp/secret", "absolute filesystem import"),
             ("C:/windows/private", "absolute filesystem import"),
+            (r"C:\windows\private", "absolute filesystem import"),
+            (r"\\server\share\secret", "absolute filesystem import"),
             ("file:/var/tmp/secret", "absolute filesystem import"),
             ("pkg:tools/src/answer", "unbundled pkg: import"),
         )
