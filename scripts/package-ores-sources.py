@@ -21,6 +21,7 @@ SOURCE_DIRS = (
     "dependencies/spin/dependencies/http-routing/src",
 )
 MAX_FILES = 8192
+MAX_DISCOVERED_ENTRIES = 16384
 MAX_SOURCE_BYTES = 10 * 1024 * 1024
 MAX_TOTAL_BYTES = 64 * 1024 * 1024
 ZIP_EPOCH = (1980, 1, 1, 0, 0, 0)
@@ -70,6 +71,7 @@ def source_entries(root):
         raise ValueError("missing, invalid, or symlinked package manifest .ores.pkg.toml")
     files = [manifest]
     directories_seen = 0
+    discovered_entries = 0
     for relative_dir in SOURCE_DIRS:
         # A symlink in an ancestor is just as dangerous as one at the
         # directory leaf: dependencies/spin -> /outside would otherwise
@@ -87,6 +89,12 @@ def source_entries(root):
             if directories_seen > 2048:
                 raise ValueError("too many source directories")
             current = Path(current)
+            # Bound *all* directory entries, not only files ending .ores.
+            # Otherwise an adversarial checkout can exhaust discovery using
+            # arbitrarily many irrelevant files and directory names.
+            discovered_entries += len(dirs) + len(names)
+            if discovered_entries > MAX_DISCOVERED_ENTRIES:
+                raise ValueError("too many discovered source directory entries")
             if len(current.relative_to(directory).parts) > 64:
                 raise ValueError("source directory nesting exceeds 64")
             for name in dirs:
