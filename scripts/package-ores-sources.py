@@ -27,6 +27,24 @@ ZIP_EPOCH = (1980, 1, 1, 0, 0, 0)
 CONFIG_PLACEHOLDER = b"define module config as\nend\n"
 
 
+def read_bounded_regular_file(path, label):
+    """Open without following a final symlink and bound file contents."""
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(path, flags)
+    with os.fdopen(fd, "rb") as stream:
+        metadata = os.fstat(stream.fileno())
+        if not stat.S_ISREG(metadata.st_mode):
+            raise ValueError("non-regular bundle input: " + label)
+        # Hardlinks can smuggle otherwise untracked outside-checkout data
+        # into the bundle, even without using symbolic links.
+        if metadata.st_nlink != 1:
+            raise ValueError("hardlinked bundle input: " + label)
+        data = stream.read(MAX_SOURCE_BYTES + 1)
+    if len(data) > MAX_SOURCE_BYTES:
+        raise ValueError("source file exceeds bundle limit: " + label)
+    return data
+
+
 def source_entries(root):
     root = Path(root).resolve(strict=True)
     manifest = root / ".ores.pkg.toml"
@@ -35,9 +53,15 @@ def source_entries(root):
     files = [manifest]
     directories_seen = 0
     for relative_dir in SOURCE_DIRS:
+        # A symlink in an ancestor is just as dangerous as one at the
+        # directory leaf: dependencies/spin -> /outside would otherwise
+        # escape the trusted checkout via dependencies/spin/src.
+        parts = Path(relative_dir).parts
+        for depth in range(1, len(parts) + 1):
+            ancestor = root.joinpath(*parts[:depth])
+            if ancestor.is_symlink():
+                raise ValueError("symlinked source directory: " + str(ancestor))
         directory = root / relative_dir
-        if directory.is_symlink():
-            raise ValueError("symlinked source directory: " + relative_dir)
         if not directory.is_dir():
             raise ValueError("missing source directory: " + relative_dir)
         for current, dirs, names in os.walk(directory, followlinks=False):
@@ -67,7 +91,8 @@ def source_entries(root):
         relative = path.relative_to(root).as_posix()
         if relative in entries:
             raise ValueError("duplicate archive path: " + relative)
-        data = CONFIG_PLACEHOLDER if relative == "src/generated/config.ores" else path.read_bytes()
+        raw_bytes = read_bounded_regular_file(path, relative)
+        data = CONFIG_PLACEHOLDER if relative == "src/generated/config.ores" else raw_bytes
         if len(data) > MAX_SOURCE_BYTES:
             raise ValueError("source file exceeds bundle limit: " + relative)
         total += len(data)
