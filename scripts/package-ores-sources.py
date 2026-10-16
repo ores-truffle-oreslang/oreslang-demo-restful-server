@@ -6,6 +6,8 @@ manifest or a traversed symlink must never silently change package identity.
 """
 import argparse
 import os
+import re
+from pathlib import PurePosixPath
 from pathlib import Path
 import stat
 import tempfile
@@ -71,6 +73,27 @@ def source_entries(root):
         if total > MAX_TOTAL_BYTES:
             raise ValueError("source bundle exceeds byte limit")
         entries[relative] = data
+    # Check actual source imports against the artifact we are publishing.
+    # This is an early packaging consistency guard, not a replacement for
+    # compiler lexing, resolving, or link-time dependency validation.
+    # Full-line import declarations in the demo are intentionally single line.
+    rooted_pattern = re.compile(
+        rb'(?m)^[ \\t]*import\\b[^\\r\\n;]*\\bfrom[ \\t]+"(\\+[^"\\r\\n]*)"[ \\t]*;'
+    )
+    names = set(entries)
+    for origin, data in entries.items():
+        if not origin.endswith(".ores"):
+            continue
+        for match in rooted_pattern.finditer(data):
+            import_path = match.group(1).decode("utf-8")
+            if not import_path.startswith("+/"):
+                raise ValueError("malformed +/ import in bundle: " + origin)
+            raw = import_path[2:].replace("\\\\", "/")
+            if not raw or raw.startswith("/") or ".." in raw.split("/"):
+                raise ValueError("rooted import escapes or lacks package-relative path: " + origin)
+            normalized = PurePosixPath(raw).as_posix()
+            if normalized not in names and (normalized + ".ores") not in names:
+                raise ValueError("rooted import target missing from bundle: " + origin + " -> " + import_path)
     return sorted(entries.items())
 
 
