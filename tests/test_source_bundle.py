@@ -119,7 +119,9 @@ class SourceBundle(unittest.TestCase):
 
     def test_malformed_root_marker_and_traversal_are_rejected(self):
         for path in ("+src/lib/telemetry", "+/src/../src/lib/telemetry",
-                     "+/../outside", "+/", "@/src/lib/telemetry"):
+                     "+/src/./lib/telemetry", "+/src//lib/telemetry",
+                     "+/src/lib/telemetry/", "+/../outside", "+/",
+                     "@/src/lib/telemetry"):
             with self.subTest(import_path=path):
                 (self.root / "src/main.ores").write_text(
                     'import module telemetry from "' + path + '";\n'
