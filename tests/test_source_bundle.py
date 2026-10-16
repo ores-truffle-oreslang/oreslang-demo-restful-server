@@ -175,5 +175,52 @@ class SourceBundle(unittest.TestCase):
             self.archive()
 
 
+    def test_symlinked_submodule_parent_is_rejected(self):
+        # The source root itself is not a symlink, but a middle ancestor is.
+        import shutil
+        source = self.root / "dependencies/spin"
+        outside = Path(self.temp.name) / "outside-spin"
+        shutil.move(str(source), str(outside))
+        try:
+            source.symlink_to(outside, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            self.skipTest("directory symlinks are unavailable")
+        with self.assertRaisesRegex(ValueError, "symlinked source directory"):
+            self.archive()
+
+    def test_hardlinked_ores_source_is_rejected(self):
+        import os
+        external = Path(self.temp.name) / "external.ores"
+        external.write_text("pub fnc outside(): int { return 7; }")
+        alias = self.root / "src/external.ores"
+        try:
+            os.link(external, alias)
+        except (OSError, NotImplementedError):
+            self.skipTest("hardlinks are unavailable")
+        with self.assertRaisesRegex(ValueError, "hardlinked bundle input"):
+            self.archive()
+
+    def test_hardlinked_package_manifest_is_rejected(self):
+        import os
+        manifest = self.root / ".ores.pkg.toml"
+        external = Path(self.temp.name) / "outside-manifest.toml"
+        try:
+            os.link(manifest, external)
+        except (OSError, NotImplementedError):
+            self.skipTest("hardlinks are unavailable")
+        with self.assertRaisesRegex(ValueError, "hardlinked bundle input"):
+            self.archive()
+
+    def test_source_size_is_limited_before_reading_entire_file(self):
+        original = bundle.MAX_SOURCE_BYTES
+        try:
+            bundle.MAX_SOURCE_BYTES = 32
+            (self.root / "src/oversized.ores").write_bytes(b"x" * 4096)
+            with self.assertRaisesRegex(ValueError, "exceeds bundle limit"):
+                self.archive()
+        finally:
+            bundle.MAX_SOURCE_BYTES = original
+
+
 if __name__ == "__main__":
     unittest.main()
