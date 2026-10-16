@@ -68,6 +68,11 @@ including Windows drive and UNC paths, are also rejected rather than relying
 on the runtime machine's filesystem. A future package-enabled native build
 must explicitly bundle and verify the locked dependency closure.
 
+The source-bundle preflight admits only the demo's single-line import
+declarations. An unrecognized or multiline `import` declaration fails
+closed instead of skipping a dependency check; source compilation remains
+the authority for language syntax and link-time behavior.
+
 These checks complement rather than replace compiler parsing and linking.
 
 **Compatibility gate:** this branch requires Oreslang compiler support for
