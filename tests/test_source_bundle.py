@@ -107,5 +107,38 @@ class SourceBundle(unittest.TestCase):
             bundle.MAX_SOURCE_BYTES = original
 
 
+    def test_missing_rooted_target_rejects_native_bundle_without_overwriting_previous(self):
+        output, _ = self.archive()
+        original = output.read_bytes()
+        (self.root / "src/main.ores").write_text(
+            'import module telemetry from "+/src/lib/missing";\n'
+        )
+        with self.assertRaisesRegex(ValueError, "rooted import target missing"):
+            bundle.pack(self.root, output)
+        self.assertEqual(original, output.read_bytes())
+
+    def test_malformed_root_marker_and_traversal_are_rejected(self):
+        for path in ("+src/lib/telemetry", "+/src/../src/lib/telemetry",
+                     "+/../outside", "+/"):
+            with self.subTest(import_path=path):
+                (self.root / "src/main.ores").write_text(
+                    'import module telemetry from "' + path + '";\n'
+                )
+                output = Path(self.temp.name) / "rejected.zip"
+                with self.assertRaisesRegex(ValueError, "rooted import|malformed"):
+                    bundle.pack(self.root, output)
+                self.assertFalse(output.exists())
+
+    def test_comments_do_not_create_false_missing_rooted_imports(self):
+        (self.root / "src/main.ores").write_text(
+            '// import module ghost from "+/missing";\n'
+            'import module telemetry from "+/src/lib/telemetry";\n'
+        )
+        output, count = self.archive()
+        self.assertEqual(count, 4)
+        self.assertTrue(output.exists())
+
+
+
 if __name__ == "__main__":
     unittest.main()
