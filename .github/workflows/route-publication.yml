@@ -16,3 +16,5 @@ jobs:
         run: python3 -m unittest discover -s tests -p test_route_publication.py -v
       - name: Check package-root imports
         run: python3 tests/project_root_imports.py
+      - name: Verify native source-bundle packaging
+        run: python3 -m unittest discover -s tests -p test_source_bundle.py -v
