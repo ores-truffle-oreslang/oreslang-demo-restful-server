@@ -314,6 +314,26 @@ class SourceBundle(unittest.TestCase):
         self.assertFalse((Path(self.temp.name) / "fifo-rejected.zip").exists())
 
 
+    def test_nonportable_zip_entry_names_are_rejected_before_output(self):
+        # On POSIX these are literal filename characters; archive extractors
+        # on other platforms may treat them as separators or drive syntax.
+        candidates = (r"..\outside.ores", "stream:secret.ores",
+                      r"sub\module.ores")
+        for name in candidates:
+            with self.subTest(filename=name):
+                source = self.root / "src" / name
+                try:
+                    source.write_text("pub fnc proof(): int { return 42; }\n")
+                except OSError:
+                    self.skipTest("host filesystem rejects nonportable fixture names")
+                output = Path(self.temp.name) / "ambiguous.zip"
+                try:
+                    with self.assertRaisesRegex(ValueError, "nonportable source archive path"):
+                        bundle.pack(self.root, output)
+                    self.assertFalse(output.exists())
+                finally:
+                    source.unlink(missing_ok=True)
+
     def test_irrelevant_files_still_count_toward_discovery_budget(self):
         output, _ = self.archive("previous.zip")
         original = output.read_bytes()
