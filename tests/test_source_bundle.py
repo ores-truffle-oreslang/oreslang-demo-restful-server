@@ -264,5 +264,55 @@ class SourceBundle(unittest.TestCase):
             bundle.MAX_SOURCE_BYTES = original
 
 
+    def test_source_parent_swapped_to_symlink_after_discovery_is_rejected(self):
+        # Reproduce a time-of-check/time-of-use swap after os.walk has
+        # collected the package source paths, immediately before it is read.
+        import os
+        from unittest.mock import patch
+        actual = self.root / "src/lib"
+        outside = Path(self.temp.name) / "untrusted"
+        outside.mkdir()
+        (outside / "telemetry.ores").write_text("SECRET FROM OUTSIDE CHECKOUT")
+        held = self.root / "src/lib-original"
+        normal_read = bundle.read_bounded_regular_file
+        swapped = False
+
+        def swap_before_read(root, relative):
+            nonlocal swapped
+            if relative == "src/lib/telemetry.ores":
+                actual.rename(held)
+                actual.symlink_to(outside, target_is_directory=True)
+                swapped = True
+            return normal_read(root, relative)
+
+        with patch.object(bundle, "read_bounded_regular_file", side_effect=swap_before_read):
+            with self.assertRaises(OSError):
+                self.archive("race-rejected.zip")
+        self.assertTrue(swapped)
+        self.assertFalse((Path(self.temp.name) / "race-rejected.zip").exists())
+        self.assertEqual((outside / "telemetry.ores").read_text(),
+                         "SECRET FROM OUTSIDE CHECKOUT")
+
+    def test_source_file_swapped_to_fifo_before_open_does_not_block(self):
+        import os
+        from unittest.mock import patch
+        source = self.root / "src/lib/telemetry.ores"
+        normal_read = bundle.read_bounded_regular_file
+
+        def swap_before_read(root, relative):
+            if relative == "src/lib/telemetry.ores":
+                source.unlink()
+                os.mkfifo(source)
+            return normal_read(root, relative)
+
+        if not hasattr(os, "mkfifo"):
+            self.skipTest("FIFOs not supported")
+        with patch.object(bundle, "read_bounded_regular_file", side_effect=swap_before_read):
+            with self.assertRaises(ValueError) as failure:
+                self.archive("fifo-rejected.zip")
+        self.assertIn("non-regular bundle input", str(failure.exception))
+        self.assertFalse((Path(self.temp.name) / "fifo-rejected.zip").exists())
+
+
 if __name__ == "__main__":
     unittest.main()
