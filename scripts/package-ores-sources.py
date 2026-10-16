@@ -28,7 +28,7 @@ def source_entries(root):
     root = Path(root).resolve(strict=True)
     manifest = root / ".ores.pkg.toml"
     if manifest.is_symlink() or not manifest.is_file():
-        raise ValueError("missing, invalid, or symlinked .ores.pkg.toml")
+        raise ValueError("missing, invalid, or symlinked package manifest .ores.pkg.toml")
     files = [manifest]
     directories_seen = 0
     for relative_dir in SOURCE_DIRS:
