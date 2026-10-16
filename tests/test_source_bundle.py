@@ -129,6 +129,23 @@ class SourceBundle(unittest.TestCase):
                     bundle.pack(self.root, output)
                 self.assertFalse(output.exists())
 
+    def test_absolute_and_unbundled_package_imports_are_rejected(self):
+        bad_imports = (
+            ("/tmp/secret", "absolute filesystem import"),
+            ("C:/windows/private", "absolute filesystem import"),
+            ("file:/var/tmp/secret", "absolute filesystem import"),
+            ("pkg:tools/src/answer", "unbundled pkg: import"),
+        )
+        for path, diagnostic in bad_imports:
+            with self.subTest(path=path):
+                (self.root / "src/main.ores").write_text(
+                    'import module unsafe from "' + path + '";\n'
+                )
+                target = Path(self.temp.name) / "restricted.zip"
+                with self.assertRaisesRegex(ValueError, diagnostic):
+                    bundle.pack(self.root, target)
+                self.assertFalse(target.exists())
+
     def test_comments_do_not_create_false_missing_rooted_imports(self):
         (self.root / "src/main.ores").write_text(
             '// import module ghost from "+/missing";\n'
