@@ -45,6 +45,11 @@ def build_archive(root: Path, destination: Path) -> None:
     sources: dict[str, bytes] = {MANIFEST: checked_file(root, manifest)}
     for directory_name in SOURCE_DIRECTORIES:
         directory = root / directory_name
+        current = root
+        for segment in Path(directory_name).parts:
+            current = current / segment
+            if current.is_symlink():
+                raise ValueError(f"Refusing symlinked source directory: {directory_name}")
         if not directory.is_dir():
             raise ValueError(f"Missing embedded source directory: {directory_name}")
         for path in sorted(directory.rglob("*.ores")):
