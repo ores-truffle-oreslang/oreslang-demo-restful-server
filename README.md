@@ -73,6 +73,13 @@ declarations. An unrecognized or multiline `import` declaration fails
 closed instead of skipping a dependency check; source compilation remains
 the authority for language syntax and link-time behavior.
 
+Bundle entry names are restricted to portable path components: literal
+backslashes and colons in source filenames are rejected before writing ZIP
+entries. `+/` imports reject empty segments, `.`, and `..` components
+rather than normalizing them, matching the Java resolver's import contract.
+These guards protect the archive's cross-platform identity; they do not
+prove successful compiler execution.
+
 These checks complement rather than replace compiler parsing and linking.
 
 **Compatibility gate:** this branch requires Oreslang compiler support for
