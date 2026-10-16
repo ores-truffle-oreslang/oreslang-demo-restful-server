@@ -115,6 +115,14 @@ def source_entries(root):
     total = 0
     for path in files:
         relative = path.relative_to(root).as_posix()
+        # ZIP names must have one unambiguous, platform-neutral identity.
+        # A literal backslash is a POSIX filename character but may be
+        # interpreted as a directory separator by Windows unzip consumers.
+        # Colons are disallowed to avoid drive/alternate-stream spellings.
+        parts = PurePosixPath(relative).parts
+        if (not parts or any(part in ("", ".", "..") or
+                "\\" in part or ":" in part for part in parts)):
+            raise ValueError("nonportable source archive path: " + relative)
         if relative in entries:
             raise ValueError("duplicate archive path: " + relative)
         raw_bytes = read_bounded_regular_file(root, relative)
