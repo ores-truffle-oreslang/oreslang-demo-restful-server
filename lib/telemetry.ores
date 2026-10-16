@@ -1,4 +1,4 @@
-import module otel from "../../dependencies/otel/src/otel";
+import module otel from "../dependencies/otel/src/otel";
 define module telemetry as
   pub fnc accepted(borrow HttpExchange request): otel.Span {
     val String trace = "ores-trace-" + request.request_id;
