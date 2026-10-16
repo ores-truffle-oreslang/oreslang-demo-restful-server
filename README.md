@@ -158,6 +158,13 @@ Select the native capability **at build time**:
 ```
 
 The build generates the route registry, embeds the fixed application/import graph,
+and includes the canonical `.ores.pkg.toml` plus root-level `lib/*.ores`
+sources. This is essential for `+/` imports after the native launcher extracts
+the application into a new temporary directory. The archive builder rejects
+symlinked sources/manifest and tests reproducible archive bytes while redacting
+the build-machine-specific generated configuration.
+
+The native package now embeds the fixed application/import graph,
 compiles a native application launcher, and packages the pthread carrier library
 and license notices. It produces `dist/rest-server-aot-<os>-<arch>.tar.gz` (or
 `rest-server-hybrid-...`). Python, Maven, Java, Git and compiler source are build
