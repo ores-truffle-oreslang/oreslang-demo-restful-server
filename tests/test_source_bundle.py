@@ -329,5 +329,31 @@ class SourceBundle(unittest.TestCase):
         self.assertEqual(output.read_bytes(), original)
 
 
+    def test_hidden_trailing_import_on_same_line_is_rejected(self):
+        bad_statements = (
+            'import module telemetry from "+/src/lib/telemetry"; import module stolen from "/tmp/secret";',
+            'import module telemetry from "+/src/lib/telemetry"; import module stolen from "+/../../outside";',
+            'import module telemetry from "+/src/lib/telemetry"; import module stolen from "pkg:tools/secret";',
+            'import module telemetry from "+/src/lib/telemetry"; stdio.println("unexpected");',
+            'import module telemetry from "+/src/lib/telemetry"; /* extra statement */',
+        )
+        for source in bad_statements:
+            with self.subTest(source=source):
+                (self.root / "src/main.ores").write_text(source + "\\n")
+                output = Path(self.temp.name) / "reject-extra-import.zip"
+                with self.assertRaisesRegex(ValueError, "unsupported import declaration"):
+                    bundle.pack(self.root, output)
+                self.assertFalse(output.exists())
+
+    def test_crlf_import_and_trailing_line_comment_remain_valid(self):
+        (self.root / "src/main.ores").write_bytes(
+            b'import module telemetry from "+/src/lib/telemetry"; // allowed comment\\r\\n'
+        )
+        output, count = self.archive("crlf-valid.zip")
+        self.assertEqual(count, 4)
+        with zipfile.ZipFile(output) as archive:
+            self.assertIn("src/lib/telemetry.ores", archive.namelist())
+
+
 if __name__ == "__main__":
     unittest.main()
