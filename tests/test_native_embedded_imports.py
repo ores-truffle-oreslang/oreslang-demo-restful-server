@@ -87,6 +87,24 @@ class NativeEmbeddedProjectRootTests(unittest.TestCase):
             builder.build_archive(self.root, self.output)
         self.assertFalse(self.output.exists())
 
+    def test_rejects_symlinked_source_directory(self):
+        source = self.root / "lib"
+        backup = self.root / "lib-real"
+        source.rename(backup)
+        try:
+            source.symlink_to(backup, target_is_directory=True)
+        except (OSError, NotImplementedError) as error:
+            self.skipTest(f"symlink unavailable: {error}")
+        with self.assertRaisesRegex(ValueError, "symlinked source directory"):
+            builder.build_archive(self.root, self.output)
+        self.assertFalse(self.output.exists())
+
+    def test_archive_bytes_are_reproducible(self):
+        builder.build_archive(self.root, self.output)
+        first = self.output.read_bytes()
+        builder.build_archive(self.root, self.output)
+        self.assertEqual(first, self.output.read_bytes())
+
     def test_rejects_symlinked_manifest(self):
         original = self.root / builder.MANIFEST
         backup = self.root / "outside.toml"
