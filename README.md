@@ -58,6 +58,12 @@ rooted `+/src/routes/...` imports. `tests/project_root_imports.py`
 checks the source files and generated import paths without launching a
 compiler.
 
+The native source bundle also verifies that `src/main.ores` and each
+direct, single-line `+/...`, `./...`, or `../...` source import target
+exist in the embedded archive. Missing targets, parent traversal outside the
+archive, and obsolete `@/` syntax fail before replacing an output bundle.
+These checks complement rather than replace compiler parsing and linking.
+
 **Compatibility gate:** this branch requires Oreslang compiler support for
 `+/` (proposed in
 [oreslang-source.java #1050](https://github.com/ores-truffle-oreslang/oreslang-source.java/pull/1050)).
