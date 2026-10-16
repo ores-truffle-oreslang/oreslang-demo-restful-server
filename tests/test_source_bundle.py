@@ -119,13 +119,13 @@ class SourceBundle(unittest.TestCase):
 
     def test_malformed_root_marker_and_traversal_are_rejected(self):
         for path in ("+src/lib/telemetry", "+/src/../src/lib/telemetry",
-                     "+/../outside", "+/"):
+                     "+/../outside", "+/", "@/src/lib/telemetry"):
             with self.subTest(import_path=path):
                 (self.root / "src/main.ores").write_text(
                     'import module telemetry from "' + path + '";\n'
                 )
                 output = Path(self.temp.name) / "rejected.zip"
-                with self.assertRaisesRegex(ValueError, "rooted import|malformed"):
+                with self.assertRaisesRegex(ValueError, "rooted import|malformed|retired"):
                     bundle.pack(self.root, output)
                 self.assertFalse(output.exists())
 
@@ -161,6 +161,13 @@ class SourceBundle(unittest.TestCase):
         self.assertEqual(count, 5)
         with zipfile.ZipFile(output) as archive:
             self.assertIn("src/generated/routes.ores", archive.namelist())
+
+    def test_relative_import_cannot_escape_archive_root(self):
+        (self.root / "src/main.ores").write_text(
+            'import module secret from "../../outside";\n'
+        )
+        with self.assertRaisesRegex(ValueError, "relative import escapes"):
+            self.archive()
 
     def test_missing_application_entrypoint_is_rejected(self):
         (self.root / "src/main.ores").unlink()
