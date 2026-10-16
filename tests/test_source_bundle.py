@@ -129,6 +129,29 @@ class SourceBundle(unittest.TestCase):
                     bundle.pack(self.root, output)
                 self.assertFalse(output.exists())
 
+    def test_unrecognized_import_declarations_fail_closed(self):
+        cases = (
+            'import module telemetry\n  from "+/src/lib/telemetry";\n',
+            'import module telemetry from "+/src/lib/telemetry"\n',
+            'import module telemetry from\n  "+/src/lib/telemetry";\n',
+        )
+        for source in cases:
+            with self.subTest(source=source):
+                (self.root / "src/main.ores").write_text(source)
+                target = Path(self.temp.name) / "not-published.zip"
+                with self.assertRaisesRegex(ValueError, "unsupported import declaration"):
+                    bundle.pack(self.root, target)
+                self.assertFalse(target.exists())
+
+    def test_source_only_comments_and_trailing_comments_remain_valid(self):
+        (self.root / "src/main.ores").write_text(
+            '// import module ghost from "+/missing";\n'
+            'import module telemetry from "+/src/lib/telemetry"; // commentary\n'
+        )
+        output, count = self.archive()
+        self.assertEqual(count, 4)
+        self.assertTrue(output.exists())
+
     def test_absolute_and_unbundled_package_imports_are_rejected(self):
         bad_imports = (
             ("/tmp/secret", "absolute filesystem import"),
