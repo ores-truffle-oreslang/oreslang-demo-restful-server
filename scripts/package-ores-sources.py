@@ -111,6 +111,12 @@ def source_entries(root):
     for origin, data in entries.items():
         if not origin.endswith(".ores"):
             continue
+        # Don't mistake a missed/multiline import for a successfully checked
+        # dependency. Native bundling supports only single-line declarations,
+        # so reject unsupported spellings instead of silently omitting them.
+        for line in data.splitlines():
+            if re.match(rb"^[ \\t]*import\\b", line) and not import_pattern.match(line):
+                raise ValueError("unsupported import declaration in native bundle: " + origin)
         for match in import_pattern.finditer(data):
             import_path = match.group(1).decode("utf-8")
             if import_path.startswith("+"):
