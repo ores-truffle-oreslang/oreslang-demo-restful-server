@@ -129,7 +129,7 @@ def source_entries(root):
     # demo-style single-line imports, not arbitrary Oreslang syntax; the full
     # compiler still owns authoritative parsing and linking.
     import_pattern = re.compile(
-        rb'(?m)^[ \t]*import\b[^\r\n;]*\bfrom[ \t]+"([^"\r\n]*)"[ \t]*;'
+        rb'(?m)^[ \t]*import\b[^\r\n;]*\bfrom[ \t]+"([^"\r\n]*)"[ \t]*;[ \t]*(?://[^\r\n]*)?\r?$'
     )
     names = set(entries)
     if "src/main.ores" not in names:
@@ -141,7 +141,7 @@ def source_entries(root):
         # dependency. Native bundling supports only single-line declarations,
         # so reject unsupported spellings instead of silently omitting them.
         for line in data.splitlines():
-            if re.match(rb"^[ \t]*import\b", line) and not import_pattern.match(line):
+            if re.match(rb"^[ \t]*import\b", line) and not import_pattern.fullmatch(line):
                 raise ValueError("unsupported import declaration in native bundle: " + origin)
         for match in import_pattern.finditer(data):
             import_path = match.group(1).decode("utf-8")
