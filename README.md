@@ -40,6 +40,33 @@ BASE_URL=http://127.0.0.1:3001 ./scripts/curl-10.sh
 ./scripts/test.sh
 ```
 
+## Canonical project-root imports (draft migration)
+
+The canonical `.ores.pkg.toml` at the repository root sets the project root
+for the Oreslang source graph. Shared Oreslang modules now live under
+`lib/`, allowing stable import specifiers from any source depth:
+
+```ores
+import module telemetry from "+/lib/telemetry";
+import module store from "+/lib/store";
+```
+
+`+/` always points at the root resolved from the selected project manifest,
+not the current directory or the route source file's parent. Use
+`--project-root=DIR` or `ORES_PROJECT_ROOT` to select an explicit manifest
+directory. Bare dependency imports are separate, and legacy relative imports
+remain valid.
+
+**Important:** This migration is pinned to the candidate Java compiler SHA
+in `SOURCE_REF` (oreslang-source.java PR #1082). It must remain in draft
+until that exact compiler tree and the REST demo pass end-to-end tests, and
+the compiler change is merged/pinned for release. Moving the shared modules
+is not enough on its own; older compilers do not recognize `+/`.
+
+Run `python3 tests/project_root_imports.py` for the static layout/import
+contract, then `./scripts/test.sh` for real HTTP execution once JDK 25,
+Maven, dependencies, and GitHub Actions runners are available.
+
 ## File routes
 
 `src/routes/rest` is the root of REST routes. Directory names become literal URL
