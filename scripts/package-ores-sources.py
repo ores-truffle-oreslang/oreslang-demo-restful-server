@@ -78,7 +78,7 @@ def source_entries(root):
     # compiler lexing, resolving, or link-time dependency validation.
     # Full-line import declarations in the demo are intentionally single line.
     rooted_pattern = re.compile(
-        rb'(?m)^[ \\t]*import\\b[^\\r\\n;]*\\bfrom[ \\t]+"(\\+[^"\\r\\n]*)"[ \\t]*;'
+        rb'(?m)^[ \t]*import\b[^\r\n;]*\bfrom[ \t]+"(\+[^"\r\n]*)"[ \t]*;'
     )
     names = set(entries)
     for origin, data in entries.items():
@@ -88,7 +88,7 @@ def source_entries(root):
             import_path = match.group(1).decode("utf-8")
             if not import_path.startswith("+/"):
                 raise ValueError("malformed +/ import in bundle: " + origin)
-            raw = import_path[2:].replace("\\\\", "/")
+            raw = import_path[2:].replace("\\", "/")
             if not raw or raw.startswith("/") or ".." in raw.split("/"):
                 raise ValueError("rooted import escapes or lacks package-relative path: " + origin)
             normalized = PurePosixPath(raw).as_posix()
