@@ -140,5 +140,33 @@ class SourceBundle(unittest.TestCase):
 
 
 
+    def test_missing_relative_import_target_is_rejected_before_publish(self):
+        output, _ = self.archive()
+        original = output.read_bytes()
+        (self.root / "src/main.ores").write_text(
+            'import module routes from "./generated/routes";\n'
+        )
+        with self.assertRaisesRegex(ValueError, "relative import target missing"):
+            bundle.pack(self.root, output)
+        self.assertEqual(original, output.read_bytes())
+
+    def test_relative_imports_resolve_from_importer_not_package_root(self):
+        (self.root / "src/main.ores").write_text(
+            'import module routes from "./generated/routes";\n'
+        )
+        (self.root / "src/generated/routes.ores").write_text(
+            'import module telemetry from "../lib/telemetry";\n'
+        )
+        output, count = self.archive()
+        self.assertEqual(count, 5)
+        with zipfile.ZipFile(output) as archive:
+            self.assertIn("src/generated/routes.ores", archive.namelist())
+
+    def test_missing_application_entrypoint_is_rejected(self):
+        (self.root / "src/main.ores").unlink()
+        with self.assertRaisesRegex(ValueError, "application entrypoint missing"):
+            self.archive()
+
+
 if __name__ == "__main__":
     unittest.main()
