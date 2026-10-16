@@ -129,7 +129,8 @@ def source_entries(root):
                 kind = "relative"
             elif import_path.startswith("@"):
                 raise ValueError("retired @/ import in source bundle: " + origin)
-            elif (import_path.startswith("/") or re.match(r"^[A-Za-z]:[/\\\\]", import_path)
+            elif (import_path.startswith("/") or import_path.startswith("\\\\")
+                  or re.match(r"^[A-Za-z]:[/\\\\]", import_path)
                   or import_path.startswith("file:")):
                 raise ValueError("absolute filesystem import cannot be bundled: " + origin + " -> " + import_path)
             elif import_path.startswith("pkg:"):
