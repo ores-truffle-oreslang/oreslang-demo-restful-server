@@ -157,8 +157,8 @@ def source_entries(root):
                 if not import_path.startswith("+/"):
                     raise ValueError("malformed +/ import in bundle: " + origin)
                 raw = import_path[2:].replace("\\", "/")
-                if not raw or raw.startswith("/") or ".." in raw.split("/"):
-                    raise ValueError("rooted import escapes or lacks package-relative path: " + origin)
+                if any(part in ("", ".", "..") for part in raw.split("/")):
+                    raise ValueError("rooted import contains empty/dot/traversal component: " + origin)
                 target = PurePosixPath(raw).as_posix()
                 kind = "rooted"
             elif import_path.startswith("./") or import_path.startswith("../"):
