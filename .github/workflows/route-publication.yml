@@ -16,3 +16,5 @@ jobs:
         run: python3 -m unittest discover -s tests -p test_route_publication.py -v
       - name: Check canonical project-root imports
         run: python3 tests/project_root_imports.py
+      - name: Check native embedded project root
+        run: python3 -m unittest discover -s tests -p test_native_embedded_imports.py -v
