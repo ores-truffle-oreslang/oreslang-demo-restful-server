@@ -40,6 +40,32 @@ BASE_URL=http://127.0.0.1:3001 ./scripts/curl-10.sh
 ./scripts/test.sh
 ```
 
+## Project-root imports
+
+The `.ores.pkg.toml` in this repository defines the Oreslang package root.
+Local source imports use `+/` relative to that directory, **not** relative
+to each route file and **not** relative to the `[source].roots = ["src"]`
+search root. For example, in `src/routes/rest/foo/bar/baz/delete.ores`:
+
+```ores
+import module telemetry from "+/src/lib/telemetry";
+import module store from "+/src/lib/store";
+```
+
+`+/lib/store` would mean the nonexistent repository-root `lib/`, and
+`+src/lib/store` is intentionally invalid. The route generator also emits
+rooted `+/src/routes/...` imports. `tests/project_root_imports.py`
+checks the source files and generated import paths without launching a
+compiler.
+
+**Compatibility gate:** this branch requires Oreslang compiler support for
+`+/` (proposed in
+[oreslang-source.java #1050](https://github.com/ores-truffle-oreslang/oreslang-source.java/pull/1050)).
+The `SOURCE_REF` file currently pins an older compiler and is intentionally
+unchanged. Do not merge or publish native builds from this branch until a
+reviewed, fully tested compiler commit including `+/` is pinned and the
+JDK 25 interpreter/native verification suites pass.
+
 ## File routes
 
 `src/routes/rest` is the root of REST routes. Directory names become literal URL
