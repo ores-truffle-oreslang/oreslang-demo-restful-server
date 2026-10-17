@@ -5,6 +5,8 @@ export ORESLANG_SOURCE_DIR="${ORESLANG_SOURCE_DIR:-$root/.cache/oreslang-source.
 for script in setup.sh run-server.sh curl-10.sh build-native.sh; do
   bash -n "$root/scripts/$script"
 done
+python3 "$root/tests/project_root_imports.py"
+python3 -m unittest discover -s "$root/tests" -p test_native_embedded_imports.py -v
 python3 "$root/tests/integration.py"
 # Requires the diagnostic-aware compiler pinned in SOURCE_REF.
 python3 "$root/tests/core_diagnostics.py"

@@ -12,3 +12,9 @@ aliases = ["core-debug"]
 type = "bool"
 default = "false"
 help = "Capture Oreslang core numeric debug events to stderr at shutdown."
+
+[flags.project-root]
+env = "ORES_PROJECT_ROOT"
+aliases = ["project-root"]
+type = "string"
+help = "Select the directory containing the .ores.pkg.toml project manifest."
