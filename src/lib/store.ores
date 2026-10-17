@@ -1,4 +1,4 @@
-import module config from "+/src/generated/config";
+import module config from "../generated/config";
 
 define module store as
   pub fnc exists(): Future<bool> { return fs.exists_async(config.data_path()); }

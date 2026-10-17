@@ -1,5 +1,5 @@
-import module telemetry from "+/lib/telemetry";
-import module store from "+/lib/store";
+import module telemetry from "../../../../../lib/telemetry";
+import module store from "../../../../../lib/store";
 
 define isoactor Handler as
   receive(ActorMail<String> mail): void {
