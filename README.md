@@ -40,6 +40,56 @@ BASE_URL=http://127.0.0.1:3001 ./scripts/curl-10.sh
 ./scripts/test.sh
 ```
 
+## Project-root imports
+
+The `.ores.pkg.toml` in this repository defines the Oreslang package root.
+Local source imports use `+/` relative to that directory, **not** relative
+to each route file and **not** relative to the `[source].roots = ["src"]`
+search root. For example, in `src/routes/rest/foo/bar/baz/delete.ores`:
+
+```ores
+import module telemetry from "+/src/lib/telemetry";
+import module store from "+/src/lib/store";
+```
+
+`+/lib/store` would mean the nonexistent repository-root `lib/`, and
+`+src/lib/store` is intentionally invalid. The route generator also emits
+rooted `+/src/routes/...` imports. `tests/project_root_imports.py`
+checks the source files and generated import paths without launching a
+compiler.
+
+The native source bundle also verifies that `src/main.ores` and each
+direct, single-line `+/...`, `./...`, or `../...` source import target
+exist in the embedded archive. Missing targets, parent traversal outside the
+archive, and obsolete `@/` syntax fail before replacing an output bundle.
+The demo's native archive has no verified zed-pkg installation or lockfile,
+so `pkg:` imports are rejected at packaging time. Host-absolute paths,
+including Windows drive and UNC paths, are also rejected rather than relying
+on the runtime machine's filesystem. A future package-enabled native build
+must explicitly bundle and verify the locked dependency closure.
+
+The source-bundle preflight admits only the demo's single-line import
+declarations. An unrecognized or multiline `import` declaration fails
+closed instead of skipping a dependency check; source compilation remains
+the authority for language syntax and link-time behavior.
+
+Bundle entry names are restricted to portable path components: literal
+backslashes and colons in source filenames are rejected before writing ZIP
+entries. `+/` imports reject empty segments, `.`, and `..` components
+rather than normalizing them, matching the Java resolver's import contract.
+These guards protect the archive's cross-platform identity; they do not
+prove successful compiler execution.
+
+These checks complement rather than replace compiler parsing and linking.
+
+**Compatibility gate:** this branch requires Oreslang compiler support for
+`+/` (proposed in
+[oreslang-source.java #1050](https://github.com/ores-truffle-oreslang/oreslang-source.java/pull/1050)).
+The `SOURCE_REF` file currently pins an older compiler and is intentionally
+unchanged. Do not merge or publish native builds from this branch until a
+reviewed, fully tested compiler commit including `+/` is pinned and the
+JDK 25 interpreter/native verification suites pass.
+
 ## File routes
 
 `src/routes/rest` is the root of REST routes. Directory names become literal URL
