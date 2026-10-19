@@ -18,25 +18,10 @@ mvn -q -f "$source_dir/pom.xml" -DskipTests package dependency:build-classpath -
 build="$root/.cache/native-$mode"
 classes="$build/classes"
 mkdir -p "$classes"
-# Freeze the discovered route registry and embed only Ores sources. Runtime
+# Freeze the discovered route registry and embed the manifest and Ores sources. Runtime
 # configuration is replaced inside a per-process extracted bundle by native code.
 python3 "$root/scripts/generate-routes.py"
-python3 - "$root" "$classes/ores-app.zip" <<'PY'
-from pathlib import Path
-import sys, zipfile
-root, output = Path(sys.argv[1]), Path(sys.argv[2])
-with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:
-    for directory in ['src', 'dependencies/otel/src', 'dependencies/spin/src', 'dependencies/spin/dependencies/http-routing/src']:
-        for path in sorted((root / directory).rglob('*.ores')):
-            if path.is_symlink():
-                raise SystemExit(f'Refusing symlinked source: {path}')
-            name = path.relative_to(root).as_posix()
-            info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
-            info.compress_type = zipfile.ZIP_DEFLATED
-            # Never embed a build-machine-specific data path.
-            data = b'define module config as\nend\n' if name == 'src/generated/config.ores' else path.read_bytes()
-            archive.writestr(info, data)
-PY
+python3 "$root/scripts/build_embedded_application.py" "$root" "$classes/ores-app.zip"
 classpath="$source_dir/target/classes:$(cat "$source_dir/target/classpath.txt")"
 "$JAVA_HOME/bin/javac" --release 21 -cp "$classpath" -d "$classes" "$root/native/src/dev/oreslang/demo/RestServerMain.java"
 platform="$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m)"
