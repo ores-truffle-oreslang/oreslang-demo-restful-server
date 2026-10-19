@@ -54,7 +54,7 @@ def generate(port, data_dir):
              'import module http_routing from "../../dependencies/spin/dependencies/http-routing/src/http_routing";']
     for index, (_, _, path) in enumerate(routes):
         relative = path.relative_to(ROOT / "src").with_suffix("").as_posix()
-        lines.append(f'import module route as route_{index} from "../{relative}";')
+        lines.append(f'import module route as route_{index} from "+/src/{relative}";')
     lines += ['', 'define module routes as', '  pub fnc register(borrow mut spin.Builder builder): void {']
     for index, (method, parts, _) in enumerate(routes):
         url = "/" + "/".join(parts)

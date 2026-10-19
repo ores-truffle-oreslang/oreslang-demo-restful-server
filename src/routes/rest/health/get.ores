@@ -1,4 +1,4 @@
-import module telemetry from "../../../lib/telemetry";
+import module telemetry from "+/src/lib/telemetry";
 define actor Handler as
   receive(ActorMail<String> mail): void {
     val request = http.claim(mail.value);

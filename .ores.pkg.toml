@@ -1,0 +1,12 @@
+schema_version = "1"
+
+[package]
+name = "oreslang-demo-restful-server"
+version = "0.1.0"
+
+[source]
+roots = ["src"]
+import_paths = []
+
+[entrypoints]
+main = "src/main.ores"
