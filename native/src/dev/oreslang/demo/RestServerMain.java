@@ -47,11 +47,14 @@ public final class RestServerMain {
         System.setProperty("ores.runtime.carriers", "native");
         System.setProperty("polyglot.engine.WarnInterpreterOnly", "false");
 
+        if (RestServerMain.class.getResource("/ores-app.zip") == null) {
+            throw new IOException("Missing embedded Oreslang application");
+        }
         Path application = Files.createTempDirectory("ores-rest-app-");
         Thread cleanup = new Thread(() -> removeTree(application), "ores-app-cleanup");
         Runtime.getRuntime().addShutdownHook(cleanup);
         try {
-            extract(application);
+            EmbeddedAppArchive.extract(RestServerMain.class.getResourceAsStream("/ores-app.zip"), application);
             Path config = application.resolve("src/generated/config.ores");
             Files.writeString(config, "define module config as\n"
                     + "  pub fnc port(): int { return " + port + "; }\n"
@@ -68,22 +71,6 @@ public final class RestServerMain {
         } finally {
             Runtime.getRuntime().removeShutdownHook(cleanup);
             removeTree(application);
-        }
-    }
-
-    private static void extract(Path root) throws IOException {
-        var resource = RestServerMain.class.getResourceAsStream("/ores-app.zip");
-        if (resource == null) throw new IOException("Missing embedded Oreslang application");
-        try (var zip = new ZipInputStream(resource)) {
-            for (var entry = zip.getNextEntry(); entry != null; entry = zip.getNextEntry()) {
-                Path target = root.resolve(entry.getName()).normalize();
-                if (!target.startsWith(root)) throw new IOException("Invalid embedded application entry");
-                if (entry.isDirectory()) Files.createDirectories(target);
-                else {
-                    Files.createDirectories(target.getParent());
-                    Files.copy(zip, target);
-                }
-            }
         }
     }
 
