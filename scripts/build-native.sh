@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$root/scripts/lib/guards.sh"
+ores_verify_submodule_contract "$root"
 mode="${1:-aot}"
 case "$mode" in aot|hybrid) ;; *) echo 'Usage: scripts/build-native.sh [aot|hybrid]' >&2; exit 64;; esac
 : "${JAVA_HOME:?Set JAVA_HOME to GraalVM with native-image (matching the pinned SDK)}"
@@ -8,7 +10,7 @@ case "$mode" in aot|hybrid) ;; *) echo 'Usage: scripts/build-native.sh [aot|hybr
 source_dir="$(cd "$ORESLANG_SOURCE_DIR" && pwd -P)"
 [[ -z "$(git -C "$root" status --porcelain)" ]] || { echo 'Application checkout must be clean so artifact provenance is exact.' >&2; exit 65; }
 [[ -x "$JAVA_HOME/bin/native-image" ]] || { echo 'GraalVM native-image is required on the build machine.' >&2; exit 69; }
-expected="$(tr -d '[:space:]' < "$root/SOURCE_REF")"
+expected="$(ores_read_exact_source_ref "$root")"
 [[ "$(git -C "$source_dir" rev-parse HEAD)" == "$expected" ]] || { echo 'Compiler does not match SOURCE_REF.' >&2; exit 65; }
 [[ -z "$(git -C "$source_dir" status --porcelain)" ]] || { echo 'Compiler must be clean.' >&2; exit 65; }
 if git -C "$root" submodule status --recursive | grep -Eq '^[+-U]'; then
@@ -38,7 +40,9 @@ with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:
             archive.writestr(info, data)
 PY
 classpath="$source_dir/target/classes:$(cat "$source_dir/target/classpath.txt")"
-"$JAVA_HOME/bin/javac" --release 21 -cp "$classpath" -d "$classes" "$root/native/src/dev/oreslang/demo/RestServerMain.java"
+"$JAVA_HOME/bin/javac" --release 21 -cp "$classpath" -d "$classes" \
+  "$root/native/src/dev/oreslang/demo/EmbeddedAppArchive.java" \
+  "$root/native/src/dev/oreslang/demo/RestServerMain.java"
 platform="$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m)"
 dist="$root/dist/rest-server-$mode-$platform"
 # This is a derived build-output path (mode is allowlisted above). Start clean

@@ -4,13 +4,42 @@ on:
   pull_request:
 permissions:
   contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   route-publication:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: "25"
+      - name: Check shell syntax
+        run: |
+          bash -n scripts/setup.sh
+          bash -n scripts/run-server.sh
+          bash -n scripts/build-native.sh
+          bash -n scripts/test.sh
+          bash -n scripts/lib/guards.sh
+          bash -n scripts/test-guards.sh
+      - name: Check source and submodule trust guards
+        run: bash scripts/test-guards.sh
+      - name: Check bounded embedded-app extraction
+        run: |
+          mkdir -p .cache/archive-test
+          javac --release 21 -d .cache/archive-test \
+            native/src/dev/oreslang/demo/EmbeddedAppArchive.java \
+            native/test/dev/oreslang/demo/EmbeddedAppArchiveTest.java
+          java -cp .cache/archive-test dev.oreslang.demo.EmbeddedAppArchiveTest
       - name: Check route source publication
         run: python3 -m unittest discover -s tests -p test_route_publication.py -v
+      - name: Check capability-input guards are present
+        run: |
+          grep -Fq 'PORT must be a decimal integer in 1..65535.' scripts/run-server.sh
+          grep -Fq 'Refusing to grant demo filesystem capabilities to the filesystem root.' scripts/run-server.sh
+          grep -Fq 'DATA_DIR cannot contain a comma' scripts/run-server.sh
