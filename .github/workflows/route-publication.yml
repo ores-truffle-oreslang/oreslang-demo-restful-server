@@ -15,12 +15,27 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: "25"
       - name: Check shell syntax
         run: |
           bash -n scripts/setup.sh
           bash -n scripts/run-server.sh
           bash -n scripts/build-native.sh
           bash -n scripts/test.sh
+          bash -n scripts/lib/guards.sh
+          bash -n scripts/test-guards.sh
+      - name: Check source and submodule trust guards
+        run: bash scripts/test-guards.sh
+      - name: Check bounded embedded-app extraction
+        run: |
+          mkdir -p .cache/archive-test
+          javac --release 21 -d .cache/archive-test \
+            native/src/dev/oreslang/demo/EmbeddedAppArchive.java \
+            native/test/dev/oreslang/demo/EmbeddedAppArchiveTest.java
+          java -cp .cache/archive-test dev.oreslang.demo.EmbeddedAppArchiveTest
       - name: Check route source publication
         run: python3 -m unittest discover -s tests -p test_route_publication.py -v
       - name: Check capability-input guards are present
