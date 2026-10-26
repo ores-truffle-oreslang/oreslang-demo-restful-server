@@ -28,9 +28,13 @@ public final class RestServerMain {
         if (!portText.matches("[0-9]{1,5}")) throw new IllegalArgumentException("Invalid port");
         int port = Integer.parseInt(portText);
         if (port < 1 || port > 65535) throw new IllegalArgumentException("Port must be 1..65535");
+        if (dataText.isBlank()) throw new IllegalArgumentException("Data directory cannot be empty");
         Path data = Path.of(dataText).toAbsolutePath().normalize();
         Files.createDirectories(data);
         data = data.toRealPath();
+        if (data.getParent() == null) {
+            throw new IllegalArgumentException("Refusing filesystem-root data directory");
+        }
         // Permissions are comma-separated in the runtime CLI. Fail closed rather
         // than accidentally broadening authority when a data directory contains one.
         if (data.toString().contains(",")) throw new IllegalArgumentException("Data directory cannot contain a comma");
