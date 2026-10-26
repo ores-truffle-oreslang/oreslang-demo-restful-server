@@ -114,6 +114,26 @@ def main():
             assert headers["X-actor-mode"] == "shared", headers
             checks += 1
 
+            # Persisted quota is measured in UTF-8 bytes, not characters.
+            # One Unicode scalar here occupies two bytes. Starting one byte
+            # below the 1 MiB quota must therefore reject without mutation.
+            resource = directory / "data/baz.txt"
+            saved_resource = resource.read_bytes()
+            resource.write_bytes(b"x" * (1048576 - 1))
+            status, payload, _ = request(
+                server.port,
+                "PATCH",
+                "/foo/bar/baz",
+                "é".encode("utf-8"),
+                {"Content-Type": "text/plain"},
+            )
+            assert status == 413, (status, payload)
+            assert resource.stat().st_size == 1048576 - 1
+            assert resource.read_bytes() == b"x" * (1048576 - 1)
+            assert not (directory / "data/.baz.quota-stage.txt").exists()
+            resource.write_bytes(saved_resource)
+            checks += 1
+
             # A real response must produce one completed request span and the
             # correct actor/dispatch hierarchy, including framework responses.
             traces = []
