@@ -4,6 +4,9 @@ on:
   pull_request:
 permissions:
   contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   route-publication:
     runs-on: ubuntu-24.04
@@ -12,5 +15,16 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+      - name: Check shell syntax
+        run: |
+          bash -n scripts/setup.sh
+          bash -n scripts/run-server.sh
+          bash -n scripts/build-native.sh
+          bash -n scripts/test.sh
       - name: Check route source publication
         run: python3 -m unittest discover -s tests -p test_route_publication.py -v
+      - name: Check capability-input guards are present
+        run: |
+          grep -Fq 'PORT must be a decimal integer in 1..65535.' scripts/run-server.sh
+          grep -Fq 'Refusing to grant demo filesystem capabilities to the filesystem root.' scripts/run-server.sh
+          grep -Fq 'DATA_DIR cannot contain a comma' scripts/run-server.sh
