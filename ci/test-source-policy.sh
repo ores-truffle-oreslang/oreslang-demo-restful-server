@@ -25,19 +25,19 @@ mkdir -p "$test_repo/nested space"
 printf 'placeholder\n' > "$test_repo/nested space/unsafe.PY"
 git -C "$test_repo" add .
 check_bad
-git -C "$test_repo" rm -q -- "nested space/unsafe.PY"
+git -C "$test_repo" rm -q -f -- "nested space/unsafe.PY"
 printf 'placeholder\n' > "$test_repo/src/escape.ipynb"
 git -C "$test_repo" add .
 check_bad
-git -C "$test_repo" rm -q -- src/escape.ipynb
+git -C "$test_repo" rm -q -f -- src/escape.ipynb
 printf '#!/usr/bin/env python3\n' > "$test_repo/runner"
 git -C "$test_repo" add .
 check_bad
-git -C "$test_repo" rm -q -- runner
+git -C "$test_repo" rm -q -f -- runner
 ln -s hello.ores "$test_repo/src/alias.ores"
 git -C "$test_repo" add .
 check_bad
-git -C "$test_repo" rm -q -- src/alias.ores
+git -C "$test_repo" rm -q -f -- src/alias.ores
 printf 'bad\n' > "$test_repo/SOURCE_REF"
 git -C "$test_repo" add .
 check_bad
