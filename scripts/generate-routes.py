@@ -69,6 +69,7 @@ def generate(port, data_dir):
         'define module config as\n'
         f'  pub fnc port(): int {{ return {port}; }}\n'
         f'  pub fnc data_path(): String {{ return {json.dumps(str(data_dir / "baz.txt"))}; }}\n'
+        f'  pub fnc quota_staging_path(): String {{ return {json.dumps(str(data_dir / ".baz.quota-stage.txt"))}; }}\n'
         'end\n')
     print(f"Generated {len(routes)} method routes from src/routes/rest", flush=True)
 

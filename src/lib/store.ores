@@ -1,9 +1,30 @@
 import module config from "../generated/config";
 
 define module store as
+  pub fnc max_resource_bytes(): int { return 1048576; }
+
   pub fnc exists(): Future<bool> { return fs.exists_async(config.data_path()); }
   pub fnc read(): Future<String> { return fs.read_text_async(config.data_path()); }
-  pub fnc write(String value): Future<void> { return fs.write_text_async(config.data_path(), value); }
-  pub fnc append(String value): Future<void> { return fs.append_text_async(config.data_path(), value); }
+  pub fnc size(): Future<int> { return fs.file_size_async(config.data_path()); }
+
+  pub fnc write(String value): Future<void> {
+    return fs.write_text_atomic_async(config.data_path(), value);
+  }
+
+  // The listener admits exactly one exchange through actor finalization, so
+  // this same-directory staging path has one writer. It is not authoritative
+  // application data; it only provides byte-accurate UTF-8 sizing.
+  pub fnc stage_for_size(String value): Future<void> {
+    return fs.write_text_atomic_async(config.quota_staging_path(), value);
+  }
+
+  pub fnc staged_size(): Future<int> {
+    return fs.file_size_async(config.quota_staging_path());
+  }
+
+  pub fnc clear_stage(): Future<void> {
+    return fs.remove_async(config.quota_staging_path());
+  }
+
   pub fnc remove(): Future<void> { return fs.remove_async(config.data_path()); }
 end
