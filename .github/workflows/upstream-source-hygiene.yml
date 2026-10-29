@@ -46,3 +46,13 @@ jobs:
           n="$(git ls-files -- '*.ores' | wc -l | tr -d ' ')"
           printf 'STRUCTURAL_ONLY tracked_ores_sources=%s\n' "$n"
           printf 'NOT_EXECUTED: no genuine Oreslang compiler or HTTP guest was invoked\n'
+
+      - name: Run hermetic negative regression tests
+        shell: bash
+        run: bash ci/test-source-policy.sh
+      - name: Enforce exact Git-index source policy
+        shell: bash
+        env:
+          EXPECTED_DEMO_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          SOURCE_POLICY_MODE: rest-legacy
+        run: bash ci/source-policy.sh
