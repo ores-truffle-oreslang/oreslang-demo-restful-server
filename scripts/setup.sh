@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$root/scripts/lib/guards.sh"
+ores_verify_submodule_contract "$root"
 # Validate the pin and tracked remote declarations BEFORE any submodule fetch
 # or compiler clone. A tampered .gitmodules must not select fetch endpoints.
 expected="$(cat "$root/SOURCE_REF")"

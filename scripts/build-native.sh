@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$root/scripts/lib/guards.sh"
+ores_verify_submodule_contract "$root"
 mode="${1:-aot}"
 case "$mode" in aot|hybrid) ;; *) echo 'Usage: scripts/build-native.sh [aot|hybrid]' >&2; exit 64;; esac
 : "${JAVA_HOME:?Set JAVA_HOME to GraalVM with native-image (matching the pinned SDK)}"
-expected="$(tr -d '[:space:]' < "$root/SOURCE_REF")"
+expected="$(ores_read_exact_source_ref "$root")"
 source_dir="${ORESLANG_SOURCE_DIR:-$root/.cache/compiler-$expected}"
 bash "$root/scripts/check-deps.sh" --all
 source_dir="$(cd "$source_dir" && pwd -P)"
@@ -35,7 +37,9 @@ with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:
             archive.writestr(info, data)
 PY
 classpath="$source_dir/target/classes:$(cat "$source_dir/target/classpath.txt")"
-"$JAVA_HOME/bin/javac" --release 21 -cp "$classpath" -d "$classes" "$root/native/src/dev/oreslang/demo/RestServerMain.java"
+"$JAVA_HOME/bin/javac" --release 21 -cp "$classpath" -d "$classes" \
+  "$root/native/src/dev/oreslang/demo/EmbeddedAppArchive.java" \
+  "$root/native/src/dev/oreslang/demo/RestServerMain.java"
 platform="$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m)"
 dist="$root/dist/rest-server-$mode-$platform"
 # This is a derived build-output path (mode is allowlisted above). Start clean
