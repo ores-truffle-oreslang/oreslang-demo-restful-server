@@ -15,6 +15,7 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
         with:
           distribution: temurin
@@ -43,3 +44,7 @@ jobs:
           grep -Fq 'PORT must be a decimal integer in 1..65535.' scripts/run-server.sh
           grep -Fq 'Refusing to grant demo filesystem capabilities to the filesystem root.' scripts/run-server.sh
           grep -Fq 'DATA_DIR cannot contain a comma' scripts/run-server.sh
+      - name: Check package-root imports
+        run: python3 tests/project_root_imports.py
+      - name: Verify native source-bundle packaging
+        run: python3 -m unittest discover -s tests -p test_source_bundle.py -v
