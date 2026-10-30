@@ -3,17 +3,12 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$root/scripts/lib/guards.sh"
 ores_verify_submodule_contract "$root"
-export ORESLANG_SOURCE_DIR="${ORESLANG_SOURCE_DIR:-$root/.cache/oreslang-source.java}"
+expected="$(ores_read_exact_source_ref "$root")"
+export ORESLANG_SOURCE_DIR="${ORESLANG_SOURCE_DIR:-$root/.cache/compiler-$expected}"
 if [[ -z "${ORES_JAVA:-}" && -n "${JAVA_HOME:-}" ]]; then
   export ORES_JAVA="$JAVA_HOME/bin/java"
 fi
-if git -C "$root" submodule status --recursive | grep -Eq '^[+-U]'; then
-  echo 'Run scripts/setup.sh to initialize the pinned dependencies.' >&2
-  exit 65
-fi
-expected="$(ores_read_exact_source_ref "$root")"
-[[ "$(git -C "$ORESLANG_SOURCE_DIR" rev-parse HEAD)" == "$expected" ]] || { echo 'Run scripts/setup.sh to install the pinned compiler.' >&2; exit 65; }
-[[ -z "$(git -C "$ORESLANG_SOURCE_DIR" status --porcelain)" ]] || { echo 'Compiler checkout must be clean.' >&2; exit 65; }
+bash "$root/scripts/check-deps.sh" --all
 
 port="${PORT:-3000}"
 if [[ ! "$port" =~ ^[0-9]{1,5}$ ]] || (( 10#$port < 1 || 10#$port > 65535 )); then

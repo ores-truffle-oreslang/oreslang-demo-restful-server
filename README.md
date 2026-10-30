@@ -28,9 +28,14 @@ replaces and finally deletes the demo resource; use it against a demo instance.
 Stop the server with Ctrl-C.
 
 An existing clean compiler checkout can be reused with `ORESLANG_SOURCE_DIR` if
-its commit matches `SOURCE_REF`. Otherwise setup clones and builds that exact
-revision under `.cache/`. Spin, routing and oreslang-otel are pinned Git submodules. Setup
-refuses to reset an existing compiler checkout.
+its commit matches `SOURCE_REF`. Otherwise setup uses the commit-addressed
+`.cache/compiler-<SOURCE_REF>` checkout, preserving older compiler checkouts.
+Spin, routing and oreslang-otel are pinned Git submodules. Setup refuses to
+reset an existing compiler checkout. Build/run entrypoints now reject dirty
+compiler or recursively dirty dependency trees, and fail closed on Git errors.
+See
+[the dependency upgrade record](docs/DEPENDENCY_UPGRADE_2026-10-11.md)
+for exact revisions and validation limitations.
 
 Optional settings:
 
@@ -113,10 +118,12 @@ state, not OS-process isolation. The JVM transport retains the socket/FD.
 
 `./scripts/test.sh` runs the original 31 real-HTTP and route-generation checks plus an opt-in core/userland diagnostic integration check: the 10-request
 curl sequence, error responses, HEAD/OPTIONS, persistence across a server restart,
-path mapping, unsupported method files and symlink rejection. The pinned Spin
-revision also passed its existing 55 HTTP assertions and routing golden suite.
-Validation used JDK 25 interpreter mode; native-image/optimizing-Graal performance
-was not measured for this demo.
+path mapping, unsupported method files and symlink rejection. The previous Spin
+revision had passed its 55 HTTP assertions and routing golden suite; the newly
+pinned dependency combination has not yet been exercised end-to-end.
+The previous compiler pin was exercised using JDK 25 interpreter mode.
+The new dependency pins require a fresh JDK 25 full integration run; native-image/
+optimizing-Graal performance is not established by the upgrade alone.
 
 ## Native AOT-only and hybrid builds
 
@@ -165,8 +172,10 @@ tools, a required native carrier library, mode enforcement, and HTTP persistence
 python3 tests/native_distribution.py dist/rest-server-aot-darwin-arm64.tar.gz
 ```
 
-macOS ARM64 AOT-only and hybrid archives were built and tested locally. Linux
-packaging paths are supplied but not validated by these macOS results. These
+Before this pin refresh, macOS ARM64 AOT-only and hybrid archives were
+built and tested locally. Those results do not validate the newly pinned Java
+and Spin revisions. Linux packaging paths have not been validated by those
+macOS results. These
 executables depend on OS system libraries and the bundled carrier library; they
 are not fully static, signed/notarized application releases. Native Image does
 not alter the demo's single-admission file-store constraints.
@@ -279,8 +288,9 @@ these measurements.
 
 ## Core runtime performance diagnostics (experimental compiler pin)
 
-The compiler pin on this development branch targets the diagnostic implementation
-in [oreslang-source.java #451](https://github.com/ores-truffle-oreslang/oreslang-source.java/pull/451).
+The compiler pin now targets a merged Java/GraalVM `main` snapshot in
+`SOURCE_REF` (rather than the historical diagnostic PR
+[oreslang-source.java #451](https://github.com/ores-truffle-oreslang/oreslang-source.java/pull/451)).
 This is **core runtime diagnostics**, not userland `oreslang-otel`.
 
 ```sh
@@ -304,8 +314,8 @@ To capture both low-level timings and guarded core events, use
 `./scripts/run-server.sh --core-perf --core-debug`. Core debug emits
 `ores-core-debug.v1` JSONL at shutdown; `ORES_CORE_DEBUG=true` also enables
 it and `--no-core-debug` overrides that environment setting.
-The pinned source revision is still a draft and must pass exact-commit
-integration testing before benchmarks should be treated as verified.
+The new pinned source and submodule combination must pass exact-commit
+integration testing before new benchmark results should be treated as verified.
 
 The automated diagnostic check uses the normal ten-request script, waits for
 the userland request spans, gracefully terminates the server and verifies that
