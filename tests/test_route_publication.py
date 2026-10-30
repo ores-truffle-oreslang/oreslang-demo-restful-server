@@ -45,16 +45,9 @@ class RoutePublication(unittest.TestCase):
         self.assertEqual(list(self.root.glob('.routes-*')),[])
 
     def test_symlinked_route_root_rejected(self):
-        external = self.root/'external-routes'
-        (external/'health').mkdir(parents=True)
-        (external/'health/get.ores').write_text('outside route fixture')
         route_root = self.root/'src/routes/rest'
-        for child in sorted(route_root.rglob('*'), reverse=True):
-            if child.is_file() or child.is_symlink():
-                child.unlink()
-            elif child.is_dir():
-                child.rmdir()
-        route_root.rmdir()
+        external = self.root/'external-routes'
+        route_root.rename(external)
         route_root.symlink_to(external, target_is_directory=True)
         with self.assertRaises(ValueError):
             generator.generate(3000, self.root/'data')
