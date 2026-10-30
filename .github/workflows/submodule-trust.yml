@@ -1,0 +1,54 @@
+name: Submodule trust policy
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  submodules:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Validate fixed dependency names, URLs and gitlinks
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f .gitmodules
+          test ! -L .gitmodules
+          python3 - <<'PY'
+          import configparser
+          from pathlib import Path
+
+          cfg = configparser.ConfigParser()
+          cfg.read(".gitmodules")
+          expected = {
+              'submodule "dependencies/spin"': (
+                  "dependencies/spin",
+                  "https://github.com/ores-truffle-oreslang/oreslang-spin.git",
+              ),
+              'submodule "dependencies/otel"': (
+                  "dependencies/otel",
+                  "https://github.com/ores-truffle-oreslang/oreslang-otel.git",
+              ),
+          }
+          if set(cfg.sections()) != set(expected):
+              raise SystemExit(f"unexpected submodule set: {cfg.sections()}")
+          for section, (path, url) in expected.items():
+              row = cfg[section]
+              if row.get("path") != path or row.get("url") != url:
+                  raise SystemExit(f"unexpected mapping for {section}")
+              forbidden = {"branch", "update", "ignore", "fetchrecursesubmodules"}
+              found = forbidden.intersection(k.lower() for k in row.keys())
+              if found:
+                  raise SystemExit(f"forbidden dynamic submodule options: {sorted(found)}")
+          print("GITMODULE_CONFIG_PASS")
+          PY
+          for path in dependencies/spin dependencies/otel; do
+            mode="$(git ls-files --stage -- "$path" | awk '{print $1}')"
+            test "$mode" = "160000"
+          done
+          echo 'SUBMODULE_TRUST_PASS: gitlinks are pinned by this repository tree.'
