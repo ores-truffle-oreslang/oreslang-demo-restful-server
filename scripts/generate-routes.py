@@ -27,6 +27,11 @@ def publish(path, text):
 
 
 def discover(root):
+    # The route root itself is a trust boundary. If it is a symlink, resolving
+    # child files relative to root.resolve() would make an external tree appear
+    # in-bounds. Refuse that shape before walking it.
+    if root.is_symlink() or not root.is_dir():
+        raise ValueError(f"route root must be a real directory: {root}")
     result = []
     for path in sorted(root.rglob("*.ores")):
         if path.is_symlink() or not path.resolve().is_relative_to(root.resolve()):

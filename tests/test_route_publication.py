@@ -44,6 +44,15 @@ class RoutePublication(unittest.TestCase):
         self.assertEqual(destination.read_text(),'previous valid source')
         self.assertEqual(list(self.root.glob('.routes-*')),[])
 
+    def test_symlinked_route_root_rejected(self):
+        route_root = self.root/'src/routes/rest'
+        external = self.root/'external-routes'
+        route_root.rename(external)
+        route_root.symlink_to(external, target_is_directory=True)
+        with self.assertRaises(ValueError):
+            generator.generate(3000, self.root/'data')
+        self.assertFalse((self.root/'src/generated/routes.ores').exists())
+
     def test_symlinked_output_directory_rejected(self):
         target = self.root/'elsewhere'
         target.mkdir()
