@@ -16,6 +16,17 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - name: Verify exact source tree and compiler pin
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          source_ref="$(tr -d '\n' < SOURCE_REF)"
+          [[ "$source_ref" =~ ^[0-9a-f]{40}$ ]]
+          git diff --quiet
+          git diff --cached --quiet
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
         with:
           distribution: temurin
