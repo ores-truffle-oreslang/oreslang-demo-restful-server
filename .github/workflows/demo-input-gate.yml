@@ -11,9 +11,17 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
-      - name: Validate route publication regressions
-        run: python3 -m unittest discover -s tests -p test_route_publication.py -v
+      # Existing route-publication regressions run in their separate workflow.
+      # Avoid adding new Python dependencies while tools migrate to Rust.
+      - name: Verify exact source checkout (host-only)
+        shell: bash
+        env:
+          EXPECTED_DEMO_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_DEMO_SHA"
       - name: Validate setup and submodule trust guards
         run: bash scripts/test-guards.sh
       - name: Refuse symlinked source handlers
