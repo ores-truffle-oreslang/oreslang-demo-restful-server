@@ -1,0 +1,58 @@
+# Structural only. Existing Python tooling is a tracked migration BLOCKER.
+name: Upstream source hygiene (structural only)
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  structural-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Require source-tip audit and immutable pin format
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s docs/UPSTREAM_SOURCE_TIPS_2026-10-29.md
+          grep -Eq '^[0-9a-f]{40}$' SOURCE_REF
+          test "$(wc -l < SOURCE_REF)" -eq 1
+      - name: Reject any new Python tooling, expose legacy violation
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -d '' -t files < <(git ls-files -z -- '*.py' '*.pyi' '*.ipynb')
+          for file in "${files[@]}"; do
+            case "$file" in
+              scripts/benchmark.py | scripts/generate-routes.py | tests/core_diagnostics.py | tests/integration.py | tests/native_distribution.py | tests/test_route_publication.py)
+                printf 'LEGACY_PYTHON_NONCOMPLIANT existing_path=%s\n' "$file"
+                ;;
+              *)
+                printf 'POLICY_FAILURE: new Python tooling: %s\n' "$file" >&2
+                exit 1
+                ;;
+            esac
+          done
+      - name: Report structural-only result
+        shell: bash
+        run: |
+          set -euo pipefail
+          n="$(git ls-files -- '*.ores' | wc -l | tr -d ' ')"
+          printf 'STRUCTURAL_ONLY tracked_ores_sources=%s\n' "$n"
+          printf 'NOT_EXECUTED: no genuine Oreslang compiler or HTTP guest was invoked\n'
+
+      - name: Run hermetic negative regression tests
+        shell: bash
+        run: bash ci/test-source-policy.sh
+      - name: Enforce exact Git-index source policy
+        shell: bash
+        env:
+          EXPECTED_DEMO_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          SOURCE_POLICY_MODE: rest-legacy
+        run: bash ci/source-policy.sh
