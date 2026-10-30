@@ -47,8 +47,12 @@ class RepositoryContract(unittest.TestCase):
         for file in ("setup.sh", "run-server.sh", "test.sh", "build-native.sh"):
             script = (ROOT / "scripts" / file).read_text(encoding="utf-8")
             self.assertIn(".cache/compiler-$expected", script, file)
-            self.assertIn("SOURCE_REF", script, file)
+            self.assertTrue("SOURCE_REF" in script or "ores_read_exact_source_ref" in script, file)
             self.assertIn("check-deps.sh", script, file)
+        # The shared guard helper reads the immutable pin for callers that
+        # intentionally avoid duplicating direct SOURCE_REF parsing.
+        guard = (ROOT / "scripts/lib/guards.sh").read_text(encoding="utf-8")
+        self.assertIn("SOURCE_REF", guard)
 
 if __name__ == "__main__":
     unittest.main()

@@ -2,11 +2,12 @@
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$root/scripts/lib/guards.sh"
-ores_verify_submodule_contract "$root"
 # Validate the pin and tracked remote declarations BEFORE any submodule fetch
 # or compiler clone. A tampered .gitmodules must not select fetch endpoints.
 expected="$(cat "$root/SOURCE_REF")"
 [[ "$expected" =~ ^[0-9a-f]{40}$ ]] || { echo 'Invalid SOURCE_REF; refusing dependency fetch.' >&2; exit 65; }
+# Do not inspect remotes or Git metadata until the pin has passed validation.
+ores_verify_submodule_contract "$root"
 git -C "$root" diff --quiet HEAD -- .gitmodules dependencies/spin dependencies/otel \
   || { echo 'Submodule metadata/gitlinks modified; refusing dependency fetch.' >&2; exit 65; }
 # A per-SHA default leaves an earlier pinned compiler checkout undisturbed.

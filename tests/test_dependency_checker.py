@@ -32,6 +32,9 @@ class DependencyCheckerTests(unittest.TestCase):
         self.root = Path(self.tmp.name) / 'demo'
         (self.root / 'scripts').mkdir(parents=True)
         shutil.copy2(SOURCE_ROOT / 'scripts/check-deps.sh', self.root / 'scripts/check-deps.sh')
+        guard_dir = self.root / 'scripts/lib'
+        guard_dir.mkdir()
+        shutil.copy2(SOURCE_ROOT / 'scripts/lib/guards.sh', guard_dir / 'guards.sh')
         self.compiler = Path(self.tmp.name) / 'compiler'
         self.sha = init_repo(self.compiler)
         (self.root / 'SOURCE_REF').write_text(self.sha + '\n')
@@ -144,6 +147,16 @@ class DependencyCheckerTests(unittest.TestCase):
     def test_setup_rejects_dirty_gitmodules_before_submodule_update(self):
         shutil.copy2(SOURCE_ROOT / 'scripts/setup.sh', self.root / 'scripts/setup.sh')
         self.make_submodules()
+        # The fixture uses local Git repositories for hermetic setup; publish
+        # the production allowlisted URLs in the tracked manifest before
+        # testing the separate dirty-manifest rejection path.
+        for name, url in (
+            ('dependencies/spin', 'https://github.com/ores-truffle-oreslang/oreslang-spin.git'),
+            ('dependencies/otel', 'https://github.com/ores-truffle-oreslang/oreslang-otel.git'),
+        ):
+            git(self.root, 'config', '-f', '.gitmodules', f'submodule.{name}.url', url)
+        git(self.root, 'add', '.gitmodules')
+        git(self.root, 'commit', '-qm', 'fixture: canonical public submodule URLs')
         with (self.root / '.gitmodules').open('a') as stream:
             stream.write('\n# unreviewed update URL\n')
         output = subprocess.run(['bash', str(self.root / 'scripts/setup.sh')],
