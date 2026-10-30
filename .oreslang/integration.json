@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "protocol": "oreslang-ecosystem-integration",
+  "repository": "ores-truffle-oreslang/oreslang-demo-restful-server",
+  "role": "application",
+  "upstreams": [
+    "oreslang-source.java",
+    "oreslang-spin"
+  ],
+  "evidence": "not-attested",
+  "note": "Declared integration touchpoints only; no CI or runtime parity is asserted."
+}
