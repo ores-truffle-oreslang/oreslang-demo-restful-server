@@ -1,0 +1,27 @@
+name: REST demo input gate
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  input-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Validate route publication regressions
+        run: python3 -m unittest discover -s tests -p test_route_publication.py -v
+      - name: Validate setup and submodule trust guards
+        run: bash scripts/test-guards.sh
+      - name: Refuse symlinked source handlers
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(find src/routes/rest -type l -print -quit)"
+          test "$(find src/routes/rest -type f -name '*.ores' | wc -l)" -ge 6
+          while IFS= read -r -d '' file; do
+            test -s "$file"
+          done < <(find src/routes/rest -type f -name '*.ores' -print0)
