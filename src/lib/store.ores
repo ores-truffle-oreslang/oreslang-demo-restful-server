@@ -5,6 +5,11 @@ define module store as
 
   pub fnc exists(): Future<bool> { return fs.exists_async(config.data_path()); }
   pub fnc read(): Future<String> { return fs.read_text_async(config.data_path()); }
+  // Read no more than the authoritative persisted-resource byte quota,
+  // even when a concurrent out-of-band writer extends the backing file.
+  pub fnc read_bounded(): Future<String> {
+    return fs.read_text_bounded_async(config.data_path(), 1048576);
+  }
   pub fnc size(): Future<int> { return fs.file_size_async(config.data_path()); }
 
   pub fnc write(String value): Future<void> {
