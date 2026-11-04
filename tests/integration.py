@@ -166,6 +166,48 @@ def main():
             resource.write_bytes(saved_resource)
             checks += 1
 
+            # An invalid UTF-8 persisted representation must fail strict
+            # decoding without returning replacement text or modifying bytes.
+            invalid_utf8 = bytes([0xc3, 0x28])
+            resource.write_bytes(invalid_utf8)
+            status, payload, _ = request(server.port, "GET", "/foo/bar/baz")
+            assert status == 500, (status, payload)
+            assert resource.read_bytes() == invalid_utf8
+            checks += 1
+            status, payload, _ = request(
+                server.port, "PATCH", "/foo/bar/baz", b"suffix",
+                {"Content-Type": "text/plain"},
+            )
+            assert status == 500, (status, payload)
+            assert resource.read_bytes() == invalid_utf8
+            assert not (directory / "data/.baz.quota-stage.txt").exists()
+            resource.write_bytes(saved_resource)
+            checks += 1
+
+            # A symlink in place of the authoritative persisted resource must
+            # not cause the app to read or replace the outside target.
+            if os.name == "posix":
+                outside_resource = directory / "outside-resource-target.txt"
+                outside_resource.write_bytes(b"outside sentinel survives")
+                resource.unlink()
+                resource.symlink_to(outside_resource)
+                try:
+                    status, payload, _ = request(server.port, "GET", "/foo/bar/baz")
+                    assert status == 500, (status, payload)
+                    assert outside_resource.read_bytes() == b"outside sentinel survives"
+                    checks += 1
+                    status, payload, _ = request(
+                        server.port, "PUT", "/foo/bar/baz", b"overwrite",
+                        {"Content-Type": "text/plain"},
+                    )
+                    assert status == 500, (status, payload)
+                    assert resource.is_symlink()
+                    assert outside_resource.read_bytes() == b"outside sentinel survives"
+                    checks += 1
+                finally:
+                    resource.unlink()
+                    resource.write_bytes(saved_resource)
+
             # An attacker-controlled symlink at the quota-staging path must
             # not be followed by async atomic replacement; this exercises the
             # real handler/runtime capability boundary, not a static grep.
