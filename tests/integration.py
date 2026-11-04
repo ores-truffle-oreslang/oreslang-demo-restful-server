@@ -114,6 +114,77 @@ def main():
             assert headers["X-actor-mode"] == "shared", headers
             checks += 1
 
+            # Persisted quota is measured in UTF-8 bytes, not characters.
+            # One Unicode scalar here occupies two bytes. Starting one byte
+            # below the 1 MiB quota must therefore reject without mutation.
+            resource = directory / "data/baz.txt"
+            saved_resource = resource.read_bytes()
+            resource.write_bytes(b"x" * (1048576 - 1))
+            status, payload, _ = request(
+                server.port,
+                "PATCH",
+                "/foo/bar/baz",
+                "é".encode("utf-8"),
+                {"Content-Type": "text/plain"},
+            )
+            assert status == 413, (status, payload)
+            assert resource.stat().st_size == 1048576 - 1
+            assert resource.read_bytes() == b"x" * (1048576 - 1)
+            assert not (directory / "data/.baz.quota-stage.txt").exists()
+            resource.write_bytes(saved_resource)
+            checks += 1
+
+            # Reject an already-corrupted/over-quota authoritative resource
+            # before reading it into actor state, and preserve its bytes.
+            over_quota = b"z" * (1048576 + 1)
+            resource.write_bytes(over_quota)
+            status, payload, _ = request(
+                server.port, "PATCH", "/foo/bar/baz", b"x",
+                {"Content-Type": "text/plain"},
+            )
+            assert status == 413, (status, payload)
+            assert resource.read_bytes() == over_quota
+            assert not (directory / "data/.baz.quota-stage.txt").exists()
+            checks += 1
+
+            # GET must also reject an out-of-band oversized resource before
+            # materializing its text. Server-side persistence corruption is
+            # a 500, not an oversized incoming request (413).
+            status, payload, _ = request(server.port, "GET", "/foo/bar/baz")
+            assert status == 500, (status, payload)
+            assert b"stored resource exceeds persisted byte quota" in payload
+            assert resource.read_bytes() == over_quota
+            checks += 1
+
+            # The exact byte ceiling is still readable; the bounded reader
+            # must not reject a valid 1 MiB UTF-8 ASCII resource.
+            at_limit = b"y" * 1048576
+            resource.write_bytes(at_limit)
+            status, payload, _ = request(server.port, "GET", "/foo/bar/baz")
+            assert status == 200, (status, payload[:100])
+            assert payload == at_limit
+            resource.write_bytes(saved_resource)
+            checks += 1
+
+            # An attacker-controlled symlink at the quota-staging path must
+            # not be followed by async atomic replacement; this exercises the
+            # real handler/runtime capability boundary, not a static grep.
+            if os.name == "posix":
+                staged = directory / "data/.baz.quota-stage.txt"
+                outside = directory / "outside-quota-target.txt"
+                outside.write_bytes(b"outside file must survive")
+                staged.symlink_to(outside)
+                status, payload, _ = request(
+                    server.port, "PATCH", "/foo/bar/baz", b"update",
+                    {"Content-Type": "text/plain"},
+                )
+                assert status == 500, (status, payload)
+                assert resource.read_bytes() == saved_resource
+                assert outside.read_bytes() == b"outside file must survive"
+                assert staged.is_symlink()
+                staged.unlink()
+                checks += 1
+
             # A real response must produce one completed request span and the
             # correct actor/dispatch hierarchy, including framework responses.
             traces = []
