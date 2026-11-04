@@ -47,4 +47,6 @@ jobs:
           grep -Fq 'fs.write_text_atomic_async' src/lib/store.ores
           grep -Fq 'fs.file_size_async' src/lib/store.ores
           grep -Fq 'resource exceeds persisted byte quota' src/routes/rest/foo/bar/baz/patch.ores
+          grep -Fq 'val int persisted_bytes = await store.size();' src/routes/rest/foo/bar/baz/get.ores
+          grep -Fq 'stored resource exceeds persisted byte quota' src/routes/rest/foo/bar/baz/get.ores
           grep -Fq '.baz.quota-stage.txt' scripts/generate-routes.py
