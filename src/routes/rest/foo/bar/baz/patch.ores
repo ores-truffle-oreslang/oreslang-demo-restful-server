@@ -39,7 +39,7 @@ define isoactor Handler as
         return;
       fi
 
-      val String current = await store.read();
+      val String current = await store.read_bounded();
       val String updated = current + body;
 
       // UTF-8 byte quota, not character count. The staging file is safe here

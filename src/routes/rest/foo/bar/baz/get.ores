@@ -25,7 +25,7 @@ define actor Handler as
           self.end();
           return;
         fi
-        val Future<String> reading = store.read();
+        val Future<String> reading = store.read_bounded();
         body = await reading;
       fi
       await request.respond(status, "text/plain; charset=utf-8", body);
