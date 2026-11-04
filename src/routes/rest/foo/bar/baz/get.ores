@@ -13,6 +13,18 @@ define actor Handler as
       val int status = exists ? 200 : 404;
       let String body = "resource not found";
       if exists; then
+        // Fail closed on a pre-existing oversized persisted resource before
+        // requesting its contents from the filesystem. This is a preflight
+        // check, not a substitute for a descriptor-bound bounded read when
+        // out-of-band writers can mutate the file concurrently.
+        val int persisted_bytes = await store.size();
+        if persisted_bytes > store.max_resource_bytes(); then
+          await request.respond(500, "text/plain",
+                                "stored resource exceeds persisted byte quota");
+          telemetry_status = 500;
+          self.end();
+          return;
+        fi
         val Future<String> reading = store.read();
         body = await reading;
       fi
