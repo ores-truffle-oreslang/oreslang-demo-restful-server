@@ -278,5 +278,32 @@ class RoutePublicationBoundaries(unittest.TestCase):
                 self.assertEqual((generated / name).read_bytes(), contents)
 
 
+
+class RoutePortTypeWave32(unittest.TestCase):
+    """Host source generation never accepts non-integral or bool port literals."""
+    setUp = RoutePublication.setUp
+
+    def test_bool_float_or_string_port_cannot_publish_generated_sources(self):
+        for port in (True, False, 3000.0, 3000.5, "3000", None):
+            with self.subTest(port=repr(port)):
+                with self.assertRaisesRegex(ValueError, "port must be"):
+                    generator.generate(port, self.root / "data")
+                self.assertFalse((self.root / "src/generated/routes.ores").exists())
+                self.assertFalse((self.root / "src/generated/config.ores").exists())
+
+    def test_invalid_type_preserves_previous_successful_publications(self):
+        generator.generate(3000, self.root / "data")
+        generated = self.root / "src/generated"
+        before = {name: (generated / name).read_bytes()
+                  for name in ("routes.ores", "config.ores")}
+        for port in (True, 3000.0, 3000.5):
+            with self.subTest(port=repr(port)):
+                with self.assertRaisesRegex(ValueError, "port must be"):
+                    generator.generate(port, self.root / "other-data")
+                for name, expected in before.items():
+                    self.assertEqual((generated / name).read_bytes(), expected)
+
+
+
 if __name__=='__main__':
     unittest.main()
