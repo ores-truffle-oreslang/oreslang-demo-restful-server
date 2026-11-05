@@ -48,7 +48,7 @@ def discover(root):
     return result
 
 def generate(port, data_dir):
-    if not 1 <= port <= 65535:
+    if type(port) is not int or not 1 <= port <= 65535:
         raise ValueError("port must be in 1..65535")
     routes = discover(ROOT / "src/routes/rest")
     generated = ROOT / "src/generated"
