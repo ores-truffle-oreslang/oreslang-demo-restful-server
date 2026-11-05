@@ -27,6 +27,23 @@ def request(port, method, path, body=None, headers=None):
         time.sleep(0.02)
     raise AssertionError("server admission did not recover")
 
+def request_chunked(port, method, path, chunks):
+    """Send chunked HTTP/1.1 without a Content-Length header."""
+    connection = http.client.HTTPConnection("127.0.0.1", port, timeout=12)
+    try:
+        connection.request(
+            method,
+            path,
+            body=iter(chunks),
+            headers={"Content-Type": "text/plain"},
+            encode_chunked=True,
+        )
+        response = connection.getresponse()
+        return response.status, response.read(), dict(response.getheaders())
+    finally:
+        connection.close()
+
+
 class Server:
     def __init__(self, directory, extra_args=()):
         with socket.socket() as listener:
@@ -119,6 +136,64 @@ def main():
             # below the 1 MiB quota must therefore reject without mutation.
             resource = directory / "data/baz.txt"
             saved_resource = resource.read_bytes()
+            # Listener body_limit_bytes is 65536 (src/main.ores). The pinned
+            # NativeHttp.bodyText() reads at most bodyLimit+1 bytes, including
+            # chunked requests; prove the boundary through actual HTTP.
+            # Over-limit rejection must not enter the handler, mutate data,
+            # leave quota staging, or silently truncate a UTF-8 scalar.
+            stage = directory / "data/.baz.quota-stage.txt"
+            at_limit = b"x" * 65536
+            for method, incoming in [
+                ("POST", b"x" * 65537),
+                ("PUT", b"x" * 65537),
+                ("PATCH", b"x" * 65537),
+                ("PATCH", b"x" * 65535 + "é".encode("utf-8")),
+            ]:
+                status, payload, _ = request(
+                    server.port, method, "/foo/bar/baz", incoming,
+                    {"Content-Type": "text/plain"},
+                )
+                assert status == 413, (method, len(incoming), status, payload)
+                assert resource.read_bytes() == saved_resource
+                assert not stage.exists()
+                checks += 1
+
+            # Exactly at the configured body limit is admitted. Since the
+            # resource exists, POST reports 409 without replacing its bytes.
+            status, payload, _ = request(
+                server.port, "POST", "/foo/bar/baz", at_limit,
+                {"Content-Type": "text/plain"},
+            )
+            assert status == 409, (status, payload)
+            assert resource.read_bytes() == saved_resource
+            assert not stage.exists()
+            checks += 1
+
+            # Content-Length is a preflight bound, even if the caller lies
+            # about the actual body size (shorter than the declared size).
+            status, payload, _ = request(
+                server.port, "PUT", "/foo/bar/baz", at_limit,
+                {"Content-Type": "text/plain", "Content-Length": "65537"},
+            )
+            assert status == 413, (status, payload)
+            assert resource.read_bytes() == saved_resource
+            assert not stage.exists()
+            checks += 1
+
+            # Chunked transfer has no Content-Length. Count decoded bytes,
+            # including one byte crossing the exact limit.
+            for chunks, expected_status in [
+                ([b"a" * 32768, b"b" * 32768, b"c"], 413),
+                ([b"a" * 32768, b"b" * 32768], 409),
+            ]:
+                status, payload, _ = request_chunked(
+                    server.port, "POST", "/foo/bar/baz", chunks,
+                )
+                assert status == expected_status, (status, payload)
+                assert resource.read_bytes() == saved_resource
+                assert not stage.exists()
+                checks += 1
+
             resource.write_bytes(b"x" * (1048576 - 1))
             status, payload, _ = request(
                 server.port,
