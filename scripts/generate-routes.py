@@ -33,10 +33,15 @@ def discover(root):
     if root.is_symlink() or not root.is_dir():
         raise ValueError(f"route root must be a real directory: {root}")
     result = []
-    for path in sorted(root.rglob("*.ores")):
-        if path.is_symlink() or not path.resolve().is_relative_to(root.resolve()):
+    root_resolved = root.resolve()
+    # rglob("*.ores") skips symlinked directories entirely, hiding untrusted
+    # route-tree aliases. Audit all entries before filtering by suffix.
+    for path in sorted(root.rglob("*")):
+        if path.is_symlink() or not path.resolve().is_relative_to(root_resolved):
             raise ValueError(f"route must remain under route root: {path}")
-        # rglob("*.ores") can yield directories and special filesystem nodes;
+        if path.suffix != ".ores":
+            continue
+        # rglob("*") can yield directories and special filesystem nodes;
         # only ordinary source files are valid compiler import targets.
         if not path.is_file():
             raise ValueError(f"route must be a regular source file: {path}")
