@@ -238,5 +238,32 @@ class RouteWave14BoundaryTests(unittest.TestCase):
         for name, data in prior.items():
             self.assertEqual((generated/name).read_bytes(),data)
 
+
+
+class RouteWave22EscapedConfigAndNestedPaths(unittest.TestCase):
+    """Source-owned host generator tests; not guest compiler evidence."""
+    setUp = RoutePublication.setUp
+
+    def test_quoted_backslash_and_newline_data_path_is_json_escaped(self):
+        import json
+        data_dir = self.root / 'data"quote\\backslash\nnext'
+        generator.generate(3000, data_dir)
+        config = (self.root / 'src/generated/config.ores').read_text()
+        literal = json.dumps(str(data_dir.resolve() / 'baz.txt'))
+        self.assertIn('return ' + literal + ';', config)
+        self.assertEqual(config.count('pub fnc data_path()'), 1)
+
+    def test_nested_safe_route_uses_literal_segments_and_relative_import(self):
+        folder = self.root / 'src/routes/rest/team_2/record-7'
+        folder.mkdir(parents=True)
+        (folder / 'head.ores').write_text('fixture')
+        generator.generate(3000, self.root / 'data')
+        source = (self.root / 'src/generated/routes.ores').read_text()
+        self.assertIn('HEAD /team_2/record-7', source)
+        self.assertIn('http_routing.literal("team_2")', source)
+        self.assertIn('http_routing.literal("record-7")', source)
+        self.assertIn('from "../routes/rest/team_2/record-7/head";', source)
+
+
 if __name__=='__main__':
     unittest.main()
