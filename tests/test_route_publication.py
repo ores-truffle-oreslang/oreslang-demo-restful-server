@@ -556,5 +556,29 @@ class FailedDataPreflight(unittest.TestCase):
             generator.generate(3000, invalid_parent / 'child')
         self.assertFalse((self.root / 'src/generated').exists())
 
+
+class RegularSourceOnly(unittest.TestCase):
+    setUp = RoutePublication.setUp
+
+    def test_directory_named_like_method_source_is_rejected_without_publication(self):
+        bogus = self.root / 'src/routes/rest/health/post.ores'
+        bogus.mkdir()
+        with self.assertRaisesRegex(ValueError, 'regular source file'):
+            generator.generate(3000, self.root / 'data')
+        self.assertFalse((self.root / 'src/generated/routes.ores').exists())
+        self.assertFalse((self.root / 'src/generated/config.ores').exists())
+
+    def test_rejected_route_does_not_overwrite_previous_generated_sources(self):
+        generated = self.root / 'src/generated'
+        generated.mkdir(parents=True)
+        (generated / 'routes.ores').write_bytes(b'old-routes')
+        (generated / 'config.ores').write_bytes(b'old-config')
+        (self.root / 'src/routes/rest/health/post.ores').mkdir()
+        with self.assertRaisesRegex(ValueError, 'regular source file'):
+            generator.generate(3000, self.root / 'data')
+        self.assertEqual((generated / 'routes.ores').read_bytes(), b'old-routes')
+        self.assertEqual((generated / 'config.ores').read_bytes(), b'old-config')
+
+
 if __name__=='__main__':
     unittest.main()
