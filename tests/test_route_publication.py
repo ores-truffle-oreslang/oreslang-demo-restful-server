@@ -137,5 +137,35 @@ class RouteDiscoveryDenials(unittest.TestCase):
             generator.generate(3000, self.root / 'data')
         self.assertFalse((self.root / 'src/generated/routes.ores').exists())
 
+
+class RoutePortAndStableOrder(unittest.TestCase):
+    """Publisher invariants at both port bounds and across ordered routes."""
+    setUp = RoutePublication.setUp
+
+    def test_minimum_valid_port_publishes_literal_config(self):
+        generator.generate(1, self.root / 'data')
+        config = (self.root / 'src/generated/config.ores').read_text()
+        self.assertIn('return 1;', config)
+        self.assertIn('GET /health', (self.root / 'src/generated/routes.ores').read_text())
+
+    def test_maximum_valid_port_publishes_literal_config(self):
+        generator.generate(65535, self.root / 'data')
+        config = (self.root / 'src/generated/config.ores').read_text()
+        self.assertIn('return 65535;', config)
+
+    def test_route_emission_order_is_stable_across_creation_order(self):
+        zeta = self.root / 'src/routes/rest/zeta'
+        alpha = self.root / 'src/routes/rest/alpha'
+        zeta.mkdir()
+        (zeta / 'post.ores').write_text('fixture')
+        alpha.mkdir()
+        (alpha / 'get.ores').write_text('fixture')
+        generator.generate(3000, self.root / 'data')
+        emitted = (self.root / 'src/generated/routes.ores').read_text()
+        markers = ('GET /alpha', 'GET /health', 'POST /zeta')
+        offsets = [emitted.index(marker) for marker in markers]
+        self.assertEqual(offsets, sorted(offsets))
+
+
 if __name__=='__main__':
     unittest.main()
