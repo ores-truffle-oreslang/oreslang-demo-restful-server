@@ -599,6 +599,30 @@ class Wave42PortTypeAndPublication(unittest.TestCase):
                 self.assertEqual((generated / name).read_bytes(), expected)
             self.assertFalse((self.root / 'blocked-data').exists())
 
+
+class Wave46DanglingGeneratedSymlink(unittest.TestCase):
+    """Generated leaf aliases must never manufacture their missing targets."""
+    setUp = RoutePublication.setUp
+
+    def test_dangling_routes_and_config_symlinks_are_replaced_without_following(self):
+        generated = self.root / 'src/generated'
+        generated.mkdir()
+        external = self.root / 'never-created-by-generator.ores'
+        for name in ('routes.ores', 'config.ores'):
+            (generated / name).symlink_to(external)
+        self.assertFalse(external.exists())
+        generator.generate(3000, self.root / 'data')
+        self.assertFalse(external.exists())
+        for name in ('routes.ores', 'config.ores'):
+            with self.subTest(name=name):
+                leaf = generated / name
+                self.assertFalse(leaf.is_symlink())
+                self.assertTrue(leaf.is_file())
+                self.assertGreater(leaf.stat().st_size, 0)
+        self.assertIn('GET /health', (generated / 'routes.ores').read_text())
+        self.assertIn('return 3000;', (generated / 'config.ores').read_text())
+
+
 if __name__=='__main__':
     unittest.main()
 
