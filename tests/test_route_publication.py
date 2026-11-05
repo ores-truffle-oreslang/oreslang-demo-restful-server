@@ -498,5 +498,36 @@ class Wave38PortSubclassAdmission(unittest.TestCase):
                                   for name in before})
 
 
+
+class Wave40AtomicPreflightOnDiscoveredRoutes(unittest.TestCase):
+    """Reject hostile route files without rewriting previously valid source."""
+
+    setUp = RoutePublication.setUp
+
+    def test_unsupported_method_or_encoded_segment_preserves_both_source_files(self):
+        generator.generate(13000, self.root / 'known-good')
+        generated = self.root / 'src/generated'
+        before = {name: (generated / name).read_bytes()
+                  for name in ('routes.ores', 'config.ores')}
+        route_root = self.root / 'src/routes/rest'
+
+        hostile_method = route_root / 'health/trace.ores'
+        hostile_method.write_text('invalid method')
+        with self.assertRaisesRegex(ValueError, 'unsupported method filename'):
+            generator.generate(13001, self.root / 'new-data')
+        hostile_method.unlink()
+
+        hostile_dir = route_root / 'bad%2Fsegment'
+        hostile_dir.mkdir()
+        (hostile_dir / 'get.ores').write_text('invalid literal segment')
+        with self.assertRaisesRegex(ValueError, 'literal URL segments'):
+            generator.generate(13002, self.root / 'new-data')
+
+        self.assertEqual(before, {name: (generated / name).read_bytes()
+                                  for name in before})
+        self.assertEqual(list(generated.glob('.routes-*')), [])
+        self.assertFalse((self.root / 'new-data').exists())
+
+
 if __name__=='__main__':
     unittest.main()
