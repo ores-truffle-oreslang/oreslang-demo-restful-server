@@ -644,3 +644,29 @@ class RouteWave46CaseSensitiveMethodPublication(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertEqual((generated / name).read_bytes(), expected)
         self.assertFalse((self.root / 'other-data').exists())
+
+
+class Wave501HiddenDirectorySymlinkTrust(unittest.TestCase):
+    """Nested route directories are source-tree identities, not aliases."""
+    setUp = RoutePublication.setUp
+
+    def test_symlinked_route_directory_cannot_hide_untrusted_sources_or_republish(self):
+        generator.generate(3000, self.root / 'original-data')
+        generated = self.root / 'src/generated'
+        before = {name: (generated / name).read_bytes()
+                  for name in ('routes.ores', 'config.ores')}
+        external = self.root / 'external-routes'
+        external.mkdir()
+        (external / 'get.ores').write_text('foreign source must not be imported')
+        alias = self.root / 'src/routes/rest/foreign-alias'
+        try:
+            alias.symlink_to(external, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            self.skipTest('symlinks unavailable')
+
+        with self.assertRaisesRegex(ValueError, 'route must remain under route root'):
+            generator.generate(3001, self.root / 'rejected-data')
+        for name, data in before.items():
+            self.assertEqual((generated / name).read_bytes(), data)
+        self.assertFalse((self.root / 'rejected-data').exists())
+        self.assertEqual(list(generated.glob('.routes-*')), [])
