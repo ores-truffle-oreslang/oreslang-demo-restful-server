@@ -465,5 +465,38 @@ class Wave36UntrustedConfigPath(unittest.TestCase):
 
 
 
+
+class Wave38PortSubclassAdmission(unittest.TestCase):
+    """Host-only regression: integer-like objects cannot inject guest source."""
+
+    setUp = RoutePublication.setUp
+
+    def test_int_subclass_is_rejected_before_creating_generated_source(self):
+        class HostilePort(int):
+            def __str__(self):
+                return "3000; } pub fnc injected(): int { return 9; }"
+
+        for port in (HostilePort(3000), HostilePort(1), HostilePort(65535)):
+            with self.subTest(value=int(port)):
+                with self.assertRaisesRegex(ValueError, "port must be in 1..65535"):
+                    generator.generate(port, self.root / "data")
+                self.assertFalse((self.root / "src/generated/routes.ores").exists())
+                self.assertFalse((self.root / "src/generated/config.ores").exists())
+
+    def test_int_subclass_cannot_replace_previous_valid_publication(self):
+        class HostilePort(int):
+            def __str__(self):
+                return "8080; injected()"
+
+        generator.generate(8080, self.root / "data")
+        generated = self.root / "src/generated"
+        before = {name: (generated / name).read_bytes()
+                  for name in ("routes.ores", "config.ores")}
+        with self.assertRaisesRegex(ValueError, "port must be in 1..65535"):
+            generator.generate(HostilePort(8080), self.root / "other-data")
+        self.assertEqual(before, {name: (generated / name).read_bytes()
+                                  for name in before})
+
+
 if __name__=='__main__':
     unittest.main()
