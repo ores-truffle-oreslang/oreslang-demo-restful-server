@@ -434,5 +434,36 @@ class RoutePublicationWave31(unittest.TestCase):
                 generator.generate(port, self.root / "data")
             self.assertFalse((self.root / "src/generated").exists())
 
+class Wave36UntrustedConfigPath(unittest.TestCase):
+    """Host-only source-escaping oracle; not HTTP runtime or guest execution."""
+    setUp = RoutePublication.setUp
+
+    def test_data_directory_is_json_escaped_for_control_and_quote_characters(self):
+        import json
+        for name in ('quote"name', 'tab\tname', 'newline\nname',
+                     'backslash\\name', 'unicode-\u2028'):
+            with self.subTest(name=repr(name)):
+                directory = self.root / name
+                generator.generate(3000, directory)
+                config = (self.root / 'src/generated/config.ores').read_text()
+                encoded = json.dumps(str(directory.resolve() / 'baz.txt'))
+                self.assertIn('return ' + encoded + ';', config)
+                self.assertEqual(config.count('pub fnc data_path()'), 1)
+                self.assertIn('GET /health', (self.root / 'src/generated/routes.ores').read_text())
+                self.assertNotIn('tab\tname', config)
+                self.assertNotIn('newline\nname', config)
+                self.assertNotIn('unicode-\u2028', config)
+
+    def test_repeated_config_for_same_special_path_is_byte_identical(self):
+        directory = self.root / 'quoted"name\\with-backslash'
+        generator.generate(65535, directory)
+        path = self.root / 'src/generated/config.ores'
+        expected = path.read_bytes()
+        generator.generate(65535, directory)
+        self.assertEqual(path.read_bytes(), expected)
+
+
+
+
 if __name__=='__main__':
     unittest.main()
