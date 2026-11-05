@@ -62,5 +62,50 @@ class RoutePublication(unittest.TestCase):
         self.assertEqual(list(target.iterdir()),[])
 
 
+
+class RouteDiscoveryDenials(unittest.TestCase):
+    """Host-only route validation and no-publish-before-discovery contracts."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.routes = self.root / 'src/routes/rest'
+        (self.routes / 'health').mkdir(parents=True)
+        (self.routes / 'health/get.ores').write_text('fixture')
+        self.patch = patch.object(generator, 'ROOT', self.root)
+        self.patch.start()
+        self.addCleanup(self.patch.stop)
+
+    def test_route_discovery_is_deterministically_sorted(self):
+        (self.routes / 'alpha').mkdir()
+        (self.routes / 'alpha/post.ores').write_text('fixture')
+        entries = [(method, parts) for method, parts, _ in generator.discover(self.routes)]
+        self.assertEqual(entries, [('POST', ('alpha',)), ('GET', ('health',))])
+
+    def test_unsupported_http_method_cannot_replace_existing_source(self):
+        generated = self.root / 'src/generated'
+        generated.mkdir()
+        (generated / 'routes.ores').write_text('prior valid table')
+        (self.routes / 'health/trace.ores').write_text('unsupported')
+        with self.assertRaises(ValueError):
+            generator.generate(3000, self.root / 'data')
+        self.assertEqual((generated / 'routes.ores').read_text(), 'prior valid table')
+        self.assertFalse((generated / 'config.ores').exists())
+
+    def test_nonliteral_segment_is_rejected_before_publication(self):
+        directory = self.routes / 'not.valid'
+        directory.mkdir()
+        (directory / 'get.ores').write_text('invalid segment')
+        with self.assertRaises(ValueError):
+            generator.generate(3000, self.root / 'data')
+        self.assertFalse((self.root / 'src/generated/routes.ores').exists())
+
+    def test_empty_route_tree_is_rejected_without_outputs(self):
+        (self.routes / 'health/get.ores').unlink()
+        with self.assertRaises(ValueError):
+            generator.generate(3000, self.root / 'data')
+        self.assertFalse((self.root / 'src/generated/routes.ores').exists())
+
 if __name__=='__main__':
     unittest.main()
