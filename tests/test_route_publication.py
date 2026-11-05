@@ -601,3 +601,22 @@ class Wave42PortTypeAndPublication(unittest.TestCase):
 
 if __name__=='__main__':
     unittest.main()
+
+
+
+class RouteWave46CaseSensitiveMethodPublication(unittest.TestCase):
+    """Host-only method filename trust boundary; no guest compiler claim."""
+    setUp = RoutePublication.setUp
+
+    def test_uppercase_method_filename_cannot_replace_last_valid_publication(self):
+        generator.generate(3000, self.root / 'data')
+        generated = self.root / 'src/generated'
+        before = {name: (generated / name).read_bytes()
+                  for name in ('routes.ores', 'config.ores')}
+        (self.root / 'src/routes/rest/health/GET.ores').write_text('invalid case')
+        with self.assertRaisesRegex(ValueError, 'unsupported method filename'):
+            generator.generate(3000, self.root / 'other-data')
+        for name, expected in before.items():
+            with self.subTest(name=name):
+                self.assertEqual((generated / name).read_bytes(), expected)
+        self.assertFalse((self.root / 'other-data').exists())
