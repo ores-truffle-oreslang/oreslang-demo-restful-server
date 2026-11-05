@@ -167,5 +167,41 @@ class RoutePortAndStableOrder(unittest.TestCase):
         self.assertEqual(offsets, sorted(offsets))
 
 
+
+class SupportedMethodsAndPublisherAtomicity(unittest.TestCase):
+    """Host-only source publication checks; no guest compiler execution."""
+    setUp = RoutePublication.setUp
+
+    def test_head_and_options_have_distinct_literal_routes(self):
+        routes = self.root / 'src/routes/rest/health'
+        (routes / 'head.ores').write_text('fixture')
+        (routes / 'options.ores').write_text('fixture')
+        generator.generate(3000, self.root / 'data')
+        source = (self.root / 'src/generated/routes.ores').read_text()
+        for method in ('GET', 'HEAD', 'OPTIONS'):
+            with self.subTest(method=method):
+                self.assertIn(f'{method} /health', source)
+
+    def test_safe_hyphen_and_underscore_segment_is_literal(self):
+        nested = self.root / 'src/routes/rest/team_alpha-3'
+        nested.mkdir()
+        (nested / 'post.ores').write_text('fixture')
+        generator.generate(3000, self.root / 'data')
+        source = (self.root / 'src/generated/routes.ores').read_text()
+        self.assertIn('POST /team_alpha-3', source)
+        self.assertIn('http_routing.literal("team_alpha-3")', source)
+
+    def test_invalid_later_port_keeps_both_last_good_publications(self):
+        generator.generate(3000, self.root / 'data')
+        generated = self.root / 'src/generated'
+        before = {name: (generated / name).read_bytes()
+                  for name in ('routes.ores', 'config.ores')}
+        with self.assertRaises(ValueError):
+            generator.generate(65536, self.root / 'different-data')
+        for name, original in before.items():
+            with self.subTest(name=name):
+                self.assertEqual((generated / name).read_bytes(), original)
+
+
 if __name__=='__main__':
     unittest.main()
