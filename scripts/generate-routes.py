@@ -54,6 +54,9 @@ def generate(port, data_dir):
     generated = ROOT / "src/generated"
     if generated.is_symlink():
         raise ValueError("generated source directory must not be a symlink")
+    # A missing/uncreatable data directory must not leave half-published sources.
+    data_dir = data_dir.resolve()
+    data_dir.mkdir(parents=True, exist_ok=True)
     generated.mkdir(parents=True, exist_ok=True)
     lines = ['import module spin from "../../dependencies/spin/src/spin";',
              'import module http_routing from "../../dependencies/spin/dependencies/http-routing/src/http_routing";']
@@ -68,8 +71,6 @@ def generate(port, data_dir):
         lines.append(f'    builder.route("{method}", rt borrow path_{index}, route_{index}.handler(), 0, 0, "{method} {url}").unwrap();')
     lines += ['    return;', '  }', 'end', '']
     publish(generated / "routes.ores", "\n".join(lines))
-    data_dir = data_dir.resolve()
-    data_dir.mkdir(parents=True, exist_ok=True)
     publish(generated / "config.ores",
         'define module config as\n'
         f'  pub fnc port(): int {{ return {port}; }}\n'
