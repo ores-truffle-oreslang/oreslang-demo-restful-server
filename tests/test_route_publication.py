@@ -580,8 +580,7 @@ class RegularSourceOnly(unittest.TestCase):
         self.assertEqual((generated / 'config.ores').read_bytes(), b'old-config')
 
 
-class Wave42PortTypeAndPublication
-(unittest.TestCase):
+class Wave42PortTypeAndPublication(unittest.TestCase):
     """Non-integer port types must fail before source or data publication."""
     setUp = RoutePublication.setUp
 
