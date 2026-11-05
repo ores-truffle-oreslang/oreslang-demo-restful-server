@@ -278,5 +278,34 @@ class RoutePublicationBoundaries(unittest.TestCase):
                 self.assertEqual((generated / name).read_bytes(), contents)
 
 
+
+class Wave32EncodedConfigAndMultiMethodRoutes(unittest.TestCase):
+    """Source-owned host publication regressions, not guest route execution."""
+    setUp = RoutePublication.setUp
+
+    def test_config_data_path_with_quotes_is_json_escaped(self):
+        import json
+        data = self.root / 'data"quoted'
+        generator.generate(3000, data)
+        config = (self.root / 'src/generated/config.ores').read_text()
+        expected = json.dumps(str((data.resolve() / "baz.txt")))
+        self.assertIn("return " + expected + ";", config)
+        self.assertEqual(config.count("pub fnc data_path()"), 1)
+        self.assertIn("GET /health", (self.root / 'src/generated/routes.ores').read_text())
+
+    def test_same_literal_path_multiple_methods_have_unique_indices(self):
+        directory = self.root / 'src/routes/rest/health'
+        (directory / "head.ores").write_text("host fixture")
+        (directory / "post.ores").write_text("host fixture")
+        generator.generate(3000, self.root / 'data')
+        source = (self.root / 'src/generated/routes.ores').read_text()
+        for index, method in enumerate(("GET", "HEAD", "POST")):
+            with self.subTest(method=method):
+                self.assertIn(f"route_{index}.handler()", source)
+                self.assertIn(f'{method} /health', source)
+        self.assertLess(source.index("GET /health"), source.index("HEAD /health"))
+        self.assertLess(source.index("HEAD /health"), source.index("POST /health"))
+
+
 if __name__=='__main__':
     unittest.main()
