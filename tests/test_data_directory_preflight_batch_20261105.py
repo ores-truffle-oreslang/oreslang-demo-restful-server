@@ -2,8 +2,8 @@
 import unittest
 from test_route_publication import RoutePublication, generator
 
-class FailedDataPreflight(RoutePublication):
-    # Inherit only the setUp fixture; do not rerun parent tests in this suite.
+class FailedDataPreflight(unittest.TestCase):
+    # Reuse only the setup fixture, avoiding duplication of the full parent suite.
     setUp = RoutePublication.setUp
 
     def test_existing_generated_sources_unchanged_when_data_root_is_file(self):
