@@ -61,6 +61,36 @@ class RoutePublication(unittest.TestCase):
             generator.generate(3000,self.root/'data')
         self.assertEqual(list(target.iterdir()),[])
 
+    def test_invalid_ports_do_not_publish_any_source(self):
+        for bad in (0, -1, 65536, 2**63):
+            with self.subTest(port=bad), self.assertRaises(ValueError):
+                generator.generate(bad, self.root/'data')
+            self.assertFalse((self.root/'src/generated/routes.ores').exists())
+            self.assertFalse((self.root/'src/generated/config.ores').exists())
+
+    def test_unsupported_method_is_not_registered_or_published(self):
+        trace = self.root/'src/routes/rest/health/trace.ores'
+        trace.write_text('route fixture')
+        with self.assertRaisesRegex(ValueError, 'unsupported method filename'):
+            generator.generate(3000, self.root/'data')
+        self.assertFalse((self.root/'src/generated/routes.ores').exists())
+
+    def test_nonliteral_route_segment_is_not_published(self):
+        path = self.root/'src/routes/rest/bad segment'
+        path.mkdir()
+        (path/'get.ores').write_text('route fixture')
+        with self.assertRaisesRegex(ValueError, 'literal URL segments'):
+            generator.generate(3000, self.root/'data')
+        self.assertFalse((self.root/'src/generated/routes.ores').exists())
+
+    def test_symlinked_route_leaf_is_not_traversed(self):
+        route = self.root/'src/routes/rest/health/post.ores'
+        route.symlink_to(self.root/'src/routes/rest/health/get.ores')
+        with self.assertRaises(ValueError):
+            generator.generate(3000, self.root/'data')
+        self.assertFalse((self.root/'src/generated/routes.ores').exists())
+
+
 
 
 class RouteDiscoveryDenials(unittest.TestCase):
