@@ -580,11 +580,8 @@ class RegularSourceOnly(unittest.TestCase):
         self.assertEqual((generated / 'config.ores').read_bytes(), b'old-config')
 
 
-if __name__=='__main__':
-    unittest.main()
-
-
-class Wave42PortTypeAndPublication(unittest.TestCase):
+class Wave42PortTypeAndPublication
+(unittest.TestCase):
     """Non-integer port types must fail before source or data publication."""
     setUp = RoutePublication.setUp
 
@@ -602,3 +599,6 @@ class Wave42PortTypeAndPublication(unittest.TestCase):
             for name, expected in originals.items():
                 self.assertEqual((generated / name).read_bytes(), expected)
             self.assertFalse((self.root / 'blocked-data').exists())
+
+if __name__=='__main__':
+    unittest.main()
