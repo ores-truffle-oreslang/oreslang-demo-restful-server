@@ -36,6 +36,10 @@ def discover(root):
     for path in sorted(root.rglob("*.ores")):
         if path.is_symlink() or not path.resolve().is_relative_to(root.resolve()):
             raise ValueError(f"route must remain under route root: {path}")
+        # rglob("*.ores") can yield directories and special filesystem nodes;
+        # only ordinary source files are valid compiler import targets.
+        if not path.is_file():
+            raise ValueError(f"route must be a regular source file: {path}")
         method = path.stem
         if method not in METHODS:
             raise ValueError(f"unsupported method filename: {path.name}")
