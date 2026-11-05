@@ -137,5 +137,41 @@ class RouteDiscoveryDenials(unittest.TestCase):
             generator.generate(3000, self.root / 'data')
         self.assertFalse((self.root / 'src/generated/routes.ores').exists())
 
+
+class RouteWave14BoundaryTests(unittest.TestCase):
+    """Native host generator controls; not a compiled AttoLang route execution test."""
+    setUp = RoutePublication.setUp
+
+    def test_port_endpoints_are_valid_and_rewrite_complete_config(self):
+        for port in (1, 65535):
+            with self.subTest(port=port):
+                generator.generate(port, self.root/'data')
+                config = (self.root/'src/generated/config.ores').read_text()
+                self.assertIn('return '+str(port)+';', config)
+                self.assertIn('GET /health', (self.root/'src/generated/routes.ores').read_text())
+
+    def test_unicode_and_encoded_route_segments_never_publish(self):
+        for name in ('bad%2Fsegment', 'control\u202e', 'two words', '.hidden'):
+            with self.subTest(name=name):
+                path = self.root/'src/routes/rest'/name
+                path.mkdir()
+                (path/'get.ores').write_text('fixture')
+                with self.assertRaisesRegex(ValueError, 'literal URL segments'):
+                    generator.generate(3000, self.root/'data')
+                self.assertFalse((self.root/'src/generated/routes.ores').exists())
+                self.assertFalse((self.root/'src/generated/config.ores').exists())
+                (path/'get.ores').unlink()
+                path.rmdir()
+
+    def test_case_changed_method_cannot_replace_prior_valid_publication(self):
+        generator.generate(3000, self.root/'data')
+        generated = self.root/'src/generated'
+        prior = {name: (generated/name).read_bytes() for name in ('routes.ores','config.ores')}
+        (self.root/'src/routes/rest/health/GET.ores').write_text('bad method')
+        with self.assertRaisesRegex(ValueError, 'unsupported method filename'):
+            generator.generate(3001, self.root/'new-data')
+        for name, data in prior.items():
+            self.assertEqual((generated/name).read_bytes(),data)
+
 if __name__=='__main__':
     unittest.main()
