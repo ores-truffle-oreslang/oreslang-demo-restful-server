@@ -580,5 +580,24 @@ class RegularSourceOnly(unittest.TestCase):
         self.assertEqual((generated / 'config.ores').read_bytes(), b'old-config')
 
 
+class Wave42PortTypeAndPublication(unittest.TestCase):
+    """Non-integer port types must fail before source or data publication."""
+    setUp = RoutePublication.setUp
+
+    def test_boolean_float_text_and_int_subclasses_preserve_prior_publication(self):
+        class WrappedPort(int):
+            pass
+
+        generator.generate(3000, self.root / 'data')
+        generated = self.root / 'src/generated'
+        originals = {name: (generated / name).read_bytes()
+                     for name in ('routes.ores', 'config.ores')}
+        for invalid in (True, False, 3000.0, '3000', WrappedPort(3000)):
+            with self.subTest(port=repr(invalid)), self.assertRaisesRegex(ValueError, 'port must be in 1..65535'):
+                generator.generate(invalid, self.root / 'blocked-data')
+            for name, expected in originals.items():
+                self.assertEqual((generated / name).read_bytes(), expected)
+            self.assertFalse((self.root / 'blocked-data').exists())
+
 if __name__=='__main__':
     unittest.main()
