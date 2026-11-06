@@ -699,6 +699,37 @@ class Wave3011SymlinkedSourceAncestor(unittest.TestCase):
         self.assertEqual(list((real_source / 'generated').glob('.routes-*')), [])
 
 
+class Wave2031RouteAncestorBoundary(unittest.TestCase):
+    """Host publication: route ancestor aliases cannot import an outside tree."""
+    setUp = RoutePublication.setUp
+
+    def test_symlinked_routes_parent_preserves_existing_generated_sources(self):
+        generator.generate(3000, self.root / 'data')
+        published = self.root / 'src/generated'
+        previous = {p: (published / p).read_bytes() for p in ('routes.ores', 'config.ores')}
+        ancestor = self.root / 'src/routes'
+        outside = self.root / 'outside-routes'
+        ancestor.rename(outside)
+        ancestor.symlink_to(outside, target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, 'routes ancestor must be a real directory'):
+            generator.generate(3001, self.root / 'data')
+        for name, expected in previous.items():
+            self.assertEqual((published / name).read_bytes(), expected)
+
+    def test_restoration_after_rejected_ancestor_uses_only_reviewed_routes(self):
+        ancestor = self.root / 'src/routes'
+        outside = self.root / 'outside-routes'
+        ancestor.rename(outside)
+        ancestor.symlink_to(outside, target_is_directory=True)
+        with self.assertRaises(ValueError):
+            generator.generate(3000, self.root / 'data')
+        ancestor.unlink()
+        outside.rename(ancestor)
+        generator.generate(3001, self.root / 'data')
+        self.assertIn('GET /health', (self.root / 'src/generated/routes.ores').read_text())
+        self.assertIn('return 3001;', (self.root / 'src/generated/config.ores').read_text())
+
+
 class Wave2032SpecialRouteFileAdmission(unittest.TestCase):
     """Host generator must not read special source nodes or damage good outputs."""
 
