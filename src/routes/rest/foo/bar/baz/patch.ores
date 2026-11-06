@@ -21,18 +21,42 @@ define isoactor Handler as
         self.end();
         return;
       fi
-      val Future<bool> checking = store.exists();
-      val bool exists = await checking;
-      if exists; then
-        val Future<void> appending = store.append(body); await appending;
-        val Future<String> reading = store.read();
-        val String updated = await reading;
-        await request.respond(200, "text/plain; charset=utf-8", updated);
-        telemetry_status = 200;
-      else
+
+      val bool exists = await store.exists();
+      if !exists; then
         await request.respond(404, "text/plain", "resource not found");
         telemetry_status = 404;
+        self.end();
+        return;
       fi
+
+      // Bound the existing representation before reading it into actor state.
+      val int current_bytes = await store.size();
+      if current_bytes > store.max_resource_bytes(); then
+        await request.respond(413, "text/plain", "existing resource exceeds persisted byte quota");
+        telemetry_status = 413;
+        self.end();
+        return;
+      fi
+
+      val String current = await store.read();
+      val String updated = current + body;
+
+      // UTF-8 byte quota, not character count. The staging file is safe here
+      // because server admission is one exchange through actor finalization.
+      await store.stage_for_size(updated);
+      val int updated_bytes = await store.staged_size();
+      await store.clear_stage();
+      if updated_bytes > store.max_resource_bytes(); then
+        await request.respond(413, "text/plain", "resource exceeds persisted byte quota");
+        telemetry_status = 413;
+        self.end();
+        return;
+      fi
+
+      await store.write(updated);
+      await request.respond(200, "text/plain; charset=utf-8", updated);
+      telemetry_status = 200;
       self.end();
       return;
     } catch (failure) {

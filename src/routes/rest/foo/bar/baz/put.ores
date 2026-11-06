@@ -21,9 +21,19 @@ define isoactor Handler as
         self.end();
         return;
       fi
-      val Future<bool> checking = store.exists();
-      val bool exists = await checking;
-      val Future<void> writing = store.write(body); await writing;
+
+      await store.stage_for_size(body);
+      val int body_bytes = await store.staged_size();
+      await store.clear_stage();
+      if body_bytes > store.max_resource_bytes(); then
+        await request.respond(413, "text/plain", "resource exceeds persisted byte quota");
+        telemetry_status = 413;
+        self.end();
+        return;
+      fi
+
+      val bool exists = await store.exists();
+      await store.write(body);
       if !exists; then request.set_header("Location", "/foo/bar/baz"); fi
       await request.respond(exists ? 200 : 201, "text/plain; charset=utf-8", body);
       telemetry_status = exists ? 200 : 201;
