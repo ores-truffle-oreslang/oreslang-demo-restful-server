@@ -697,3 +697,36 @@ class Wave3011SymlinkedSourceAncestor(unittest.TestCase):
             self.assertEqual((real_source / 'generated' / name).read_bytes(), expected)
         self.assertFalse((self.root / 'blocked-data').exists())
         self.assertEqual(list((real_source / 'generated').glob('.routes-*')), [])
+
+
+class Wave2032SpecialRouteFileAdmission(unittest.TestCase):
+    """Host generator must not read special source nodes or damage good outputs."""
+
+    setUp = RoutePublication.setUp
+
+    def test_fifo_ores_path_denied_before_publication_then_valid_recovery(self):
+        import os
+        if not hasattr(os, "mkfifo"):
+            self.skipTest("POSIX FIFO support required")
+
+        generator.generate(3210, self.root / "before-data")
+        published = self.root / "src/generated"
+        previous = {name: (published / name).read_bytes()
+                    for name in ("routes.ores", "config.ores")}
+        fifo = self.root / "src/routes/rest/health/post.ores"
+        try:
+            os.mkfifo(fifo)
+        except (OSError, NotImplementedError):
+            self.skipTest("filesystem cannot create FIFO nodes")
+        with self.assertRaisesRegex(ValueError, "regular source file"):
+            generator.generate(3211, self.root / "rejected-data")
+        for name, expected in previous.items():
+            self.assertEqual((published / name).read_bytes(), expected)
+        self.assertFalse((self.root / "rejected-data").exists())
+        self.assertEqual(list(published.glob(".routes-*")), [])
+
+        fifo.unlink()
+        fifo.write_text("valid POST fixture", encoding="utf-8")
+        generator.generate(3211, self.root / "recovered-data")
+        self.assertIn("POST /health", (published / "routes.ores").read_text())
+        self.assertIn("return 3211;", (published / "config.ores").read_text())
