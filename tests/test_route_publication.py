@@ -730,6 +730,54 @@ class Wave2031RouteAncestorBoundary(unittest.TestCase):
         self.assertIn('return 3001;', (self.root / 'src/generated/config.ores').read_text())
 
 
+class Wave2053RouteTrustAndHandlerIdentity(unittest.TestCase):
+    """Real route-source generator; host evidence only, not HTTP guest execution."""
+    setUp = RoutePublication.setUp
+
+    def test_nested_method_imports_match_exact_handler_and_route_indices(self):
+        route_root = self.root / 'src/routes/rest'
+        nested = route_root / 'alpha/v1'
+        nested.mkdir(parents=True)
+        for name in ('get.ores', 'post.ores', 'put.ores'):
+            (nested / name).write_text('source fixture')
+        generator.generate(3000, self.root / 'data')
+        source = (self.root / 'src/generated/routes.ores').read_text()
+        entries = generator.discover(route_root)
+        self.assertEqual(source.count('import module route as route_'), len(entries))
+        self.assertEqual(source.count('    builder.route('), len(entries))
+        for index, (method, parts, handler) in enumerate(entries):
+            relative = handler.relative_to(self.root / 'src').with_suffix('').as_posix()
+            url = '/' + '/'.join(parts)
+            with self.subTest(method=method, url=url, handler=str(handler)):
+                self.assertIn(
+                    f'import module route as route_{index} from "../{relative}";',
+                    source,
+                )
+                self.assertIn(
+                    f'builder.route("{method}", rt borrow path_{index}, '
+                    f'route_{index}.handler(), 0, 0, "{method} {url}")',
+                    source,
+                )
+
+    def test_nonroute_symlink_is_a_trust_violation_even_if_extension_is_ignored(self):
+        generator.generate(3000, self.root / 'safe-data')
+        generated = self.root / 'src/generated'
+        previous = {name: (generated / name).read_bytes()
+                    for name in ('routes.ores', 'config.ores')}
+        external = self.root / 'external-metadata.txt'
+        external.write_text('do not import')
+        alias = self.root / 'src/routes/rest/health/unreviewed.txt'
+        try:
+            alias.symlink_to(external)
+        except (OSError, NotImplementedError):
+            self.skipTest('symlinks unavailable on this filesystem')
+        with self.assertRaisesRegex(ValueError, 'route must remain under route root'):
+            generator.generate(3001, self.root / 'blocked-data')
+        self.assertEqual(
+            {name: (generated / name).read_bytes() for name in previous}, previous)
+        self.assertEqual(external.read_text(), 'do not import')
+        self.assertFalse((self.root / 'blocked-data').exists())
+
 class Wave2032SpecialRouteFileAdmission(unittest.TestCase):
     """Host generator must not read special source nodes or damage good outputs."""
 
@@ -761,3 +809,4 @@ class Wave2032SpecialRouteFileAdmission(unittest.TestCase):
         generator.generate(3211, self.root / "recovered-data")
         self.assertIn("POST /health", (published / "routes.ores").read_text())
         self.assertIn("return 3211;", (published / "config.ores").read_text())
+
