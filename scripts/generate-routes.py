@@ -33,9 +33,18 @@ def discover(root):
     if root.is_symlink() or not root.is_dir():
         raise ValueError(f"route root must be a real directory: {root}")
     result = []
-    for path in sorted(root.rglob("*.ores")):
-        if path.is_symlink() or not path.resolve().is_relative_to(root.resolve()):
+    root_resolved = root.resolve()
+    # rglob("*.ores") skips symlinked directories entirely, hiding untrusted
+    # route-tree aliases. Audit all entries before filtering by suffix.
+    for path in sorted(root.rglob("*")):
+        if path.is_symlink() or not path.resolve().is_relative_to(root_resolved):
             raise ValueError(f"route must remain under route root: {path}")
+        if path.suffix != ".ores":
+            continue
+        # rglob("*") can yield directories and special filesystem nodes;
+        # only ordinary source files are valid compiler import targets.
+        if not path.is_file():
+            raise ValueError(f"route must be a regular source file: {path}")
         method = path.stem
         if method not in METHODS:
             raise ValueError(f"unsupported method filename: {path.name}")
@@ -48,12 +57,20 @@ def discover(root):
     return result
 
 def generate(port, data_dir):
-    if not 1 <= port <= 65535:
+    if type(port) is not int or not 1 <= port <= 65535:
         raise ValueError("port must be in 1..65535")
-    routes = discover(ROOT / "src/routes/rest")
-    generated = ROOT / "src/generated"
+    # A symlinked ancestor makes the entire source/publication tree external
+    # even when the deeper routes/rest directory itself is not a symlink.
+    source_root = ROOT / "src"
+    if source_root.is_symlink() or not source_root.is_dir():
+        raise ValueError(f"source root must be a real directory: {source_root}")
+    routes = discover(source_root / "routes/rest")
+    generated = source_root / "generated"
     if generated.is_symlink():
         raise ValueError("generated source directory must not be a symlink")
+    # A missing/uncreatable data directory must not leave half-published sources.
+    data_dir = data_dir.resolve()
+    data_dir.mkdir(parents=True, exist_ok=True)
     generated.mkdir(parents=True, exist_ok=True)
     lines = ['import module spin from "../../dependencies/spin/src/spin";',
              'import module http_routing from "../../dependencies/spin/dependencies/http-routing/src/http_routing";']
@@ -68,8 +85,6 @@ def generate(port, data_dir):
         lines.append(f'    builder.route("{method}", rt borrow path_{index}, route_{index}.handler(), 0, 0, "{method} {url}").unwrap();')
     lines += ['    return;', '  }', 'end', '']
     publish(generated / "routes.ores", "\n".join(lines))
-    data_dir = data_dir.resolve()
-    data_dir.mkdir(parents=True, exist_ok=True)
     publish(generated / "config.ores",
         'define module config as\n'
         f'  pub fnc port(): int {{ return {port}; }}\n'
