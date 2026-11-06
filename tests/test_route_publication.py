@@ -865,3 +865,27 @@ class Wave9526ExactPortTypeAdmission(unittest.TestCase):
         self.assertIn("return 65535;", (generated / "config.ores").read_text())
         self.assertIn("GET /health", (generated / "routes.ores").read_text())
 
+class Wave9861JsonPathLiteral(unittest.TestCase):
+    """Host generator must serialize a hostile filesystem path as one literal."""
+    setUp = RoutePublication.setUp
+
+    def test_quoted_unicode_backslash_and_newline_path_publishes_safely(self):
+        import json
+        folder = self.root / 'data "quoted"\\literal 🥑\nnext'
+        generator.generate(4444, folder)
+        config_file = self.root / "src/generated/config.ores"
+        routes_file = self.root / "src/generated/routes.ores"
+        config = config_file.read_text()
+        routes = routes_file.read_text()
+        expected = json.dumps(str(folder.resolve() / "baz.txt"))
+        self.assertIn("return " + expected + ";", config)
+        self.assertIn("pub fnc port(): int { return 4444; }", config)
+        self.assertEqual(config.count("pub fnc data_path()"), 1)
+        self.assertEqual(config.count("define module config as"), 1)
+        self.assertIn("GET /health", routes)
+        self.assertNotIn("\nnext/baz.txt", config)
+        self.assertTrue(folder.is_dir())
+        before = (config_file.read_bytes(), routes_file.read_bytes())
+        generator.generate(4444, folder)
+        self.assertEqual(
+            (config_file.read_bytes(), routes_file.read_bytes()), before)
