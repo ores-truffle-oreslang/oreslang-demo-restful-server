@@ -1,0 +1,28 @@
+# Source-free admission control for oreslang-platform-conformance#315.
+# No repository checkout, source content, third-party actions, credentials,
+# artifacts, external network requests or private-source exports.
+name: AttoLang source-free runner A/B control
+on:
+  pull_request:
+    paths:
+      - .github/workflows/atto-source-free-runner-ab.yml
+  workflow_dispatch:
+permissions: {}
+jobs:
+  runner-admission:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Prove allocated Ubuntu runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${RUNNER_OS}" = Linux
+          test "${GITHUB_REPOSITORY}" = ores-truffle-oreslang/oreslang-demo-restful-server
+          printf 'ATTO_RUNNER_AB allocated repo=%s run=%s\n' "${GITHUB_REPOSITORY}" "${GITHUB_RUN_ID}"
+      - name: Prove second executed step
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${GITHUB_SHA}"
+          printf 'ATTO_RUNNER_AB second_step=executed source_checkout=false private_export=false\n'
