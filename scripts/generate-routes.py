@@ -59,8 +59,13 @@ def discover(root):
 def generate(port, data_dir):
     if type(port) is not int or not 1 <= port <= 65535:
         raise ValueError("port must be in 1..65535")
-    routes = discover(ROOT / "src/routes/rest")
-    generated = ROOT / "src/generated"
+    # A symlinked ancestor makes the entire source/publication tree external
+    # even when the deeper routes/rest directory itself is not a symlink.
+    source_root = ROOT / "src"
+    if source_root.is_symlink() or not source_root.is_dir():
+        raise ValueError(f"source root must be a real directory: {source_root}")
+    routes = discover(source_root / "routes/rest")
+    generated = source_root / "generated"
     if generated.is_symlink():
         raise ValueError("generated source directory must not be a symlink")
     # A missing/uncreatable data directory must not leave half-published sources.

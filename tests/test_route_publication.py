@@ -670,3 +670,30 @@ class Wave501HiddenDirectorySymlinkTrust(unittest.TestCase):
             self.assertEqual((generated / name).read_bytes(), data)
         self.assertFalse((self.root / 'rejected-data').exists())
         self.assertEqual(list(generated.glob('.routes-*')), [])
+
+
+class Wave3011SymlinkedSourceAncestor(unittest.TestCase):
+    """A trusted route root cannot hide an untrusted symlinked parent src."""
+    setUp = RoutePublication.setUp
+
+    def test_src_symlink_fails_without_overwriting_last_good_publication(self):
+        generator.generate(3100, self.root / 'original-data')
+        generated = self.root / 'src/generated'
+        previous = {name: (generated / name).read_bytes()
+                    for name in ('routes.ores', 'config.ores')}
+
+        original = self.root / 'src'
+        real_source = self.root / 'relocated-source'
+        original.rename(real_source)
+        try:
+            original.symlink_to(real_source, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            real_source.rename(original)
+            self.skipTest('filesystem cannot create directory symlinks')
+
+        with self.assertRaisesRegex(ValueError, 'source root must be a real directory'):
+            generator.generate(3101, self.root / 'blocked-data')
+        for name, expected in previous.items():
+            self.assertEqual((real_source / 'generated' / name).read_bytes(), expected)
+        self.assertFalse((self.root / 'blocked-data').exists())
+        self.assertEqual(list((real_source / 'generated').glob('.routes-*')), [])
