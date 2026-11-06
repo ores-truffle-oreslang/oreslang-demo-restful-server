@@ -837,3 +837,31 @@ class Wave2032SpecialRouteFileAdmission(unittest.TestCase):
         self.assertIn("POST /health", (published / "routes.ores").read_text())
         self.assertIn("return 3211;", (published / "config.ores").read_text())
 
+class Wave9526ExactPortTypeAdmission(unittest.TestCase):
+    """Host-only generator must reject non-int ports before any filesystem mutation."""
+
+    setUp = RoutePublication.setUp
+
+    def test_port_exact_integer_type_preserves_prior_publication_and_recovers(self):
+        class IntSubclass(int):
+            pass
+
+        generator.generate(3000, self.root / "original-data")
+        generated = self.root / "src/generated"
+        prior = {name: (generated / name).read_bytes()
+                 for name in ("routes.ores", "config.ores")}
+        invalid_ports = [False, True, 3000.0, "3000", IntSubclass(3000), None]
+        for index, bad in enumerate(invalid_ports):
+            with self.subTest(port=repr(bad), type=type(bad).__name__):
+                denied = self.root / f"denied-port-{index}"
+                with self.assertRaisesRegex(ValueError, "port must be in"):
+                    generator.generate(bad, denied)
+                self.assertFalse(denied.exists())
+                self.assertEqual(
+                    {name: (generated / name).read_bytes() for name in prior}, prior)
+                self.assertEqual(list(generated.glob(".routes-*")), [])
+
+        generator.generate(65535, self.root / "valid-recovery")
+        self.assertIn("return 65535;", (generated / "config.ores").read_text())
+        self.assertIn("GET /health", (generated / "routes.ores").read_text())
+
