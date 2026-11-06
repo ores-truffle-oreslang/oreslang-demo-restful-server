@@ -64,7 +64,12 @@ def generate(port, data_dir):
     source_root = ROOT / "src"
     if source_root.is_symlink() or not source_root.is_dir():
         raise ValueError(f"source root must be a real directory: {source_root}")
-    routes = discover(source_root / "routes/rest")
+    # A symlinked intermediate routes directory can redirect discovery outside
+    # the trusted source tree, even when src and routes/rest are real directories.
+    route_parent = source_root / "routes"
+    if route_parent.is_symlink() or not route_parent.is_dir():
+        raise ValueError(f"route parent must be a real directory: {route_parent}")
+    routes = discover(route_parent / "rest")
     generated = source_root / "generated"
     if generated.is_symlink():
         raise ValueError("generated source directory must not be a symlink")
