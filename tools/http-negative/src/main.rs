@@ -161,12 +161,17 @@ fn require_status(port: u16, payload: &[u8], code: u16) -> Result<Vec<u8>, Strin
 struct Server {
     process: Child,
     dir: PathBuf,
+    preserve_log: bool,
 }
 impl Drop for Server {
     fn drop(&mut self) {
         let _ = self.process.kill();
         let _ = self.process.wait();
-        let _ = fs::remove_dir_all(&self.dir);
+        if self.preserve_log {
+            eprintln!("GUEST_FAIL_LOG_PRESERVED={}", self.dir.join("server.log").display());
+        } else {
+            let _ = fs::remove_dir_all(&self.dir);
+        }
     }
 }
 
@@ -188,11 +193,12 @@ fn start_server() -> Result<(Server, u16), String> {
     let child = Command::new(entry).current_dir(root).env("PORT", port.to_string())
         .env("DATA_DIR", &data).stdout(Stdio::from(log.try_clone().map_err(|e| e.to_string())?))
         .stderr(Stdio::from(log)).spawn().map_err(|e| e.to_string())?;
-    let mut server = Server { process: child, dir };
+    let mut server = Server { process: child, dir, preserve_log: false };
     let deadline = Instant::now() + Duration::from_secs(45);
     let health = request("GET", "/health", b"", b"");
     while Instant::now() < deadline {
         if let Ok(Some(exit)) = server.process.try_wait() {
+            server.preserve_log = true;
             return Err(format!("guest server exited at startup: {exit}"));
         }
         if let Ok((reply, _)) = transmit(port, &health) {
@@ -200,11 +206,13 @@ fn start_server() -> Result<(Server, u16), String> {
         }
         thread::sleep(Duration::from_millis(75));
     }
+    server.preserve_log = true;
     Err("guest server did not respond to GET /health within 45 seconds".into())
 }
 
 fn run() -> Result<(), String> {
-    let (server, port) = start_server()?;
+    let (mut server, port) = start_server()?;
+    let outcome = (|| -> Result<usize, String> {
     let create = request("POST", RESOURCE,
         b"Content-Type: text/plain\r\nContent-Length: 18\r\n", SENTINEL);
     require_status(port, &create, 201)?;
@@ -225,8 +233,18 @@ fn run() -> Result<(), String> {
         count += 1;
         println!("PASS {name}: rejected, unchanged persisted bytes, healthy follow-up");
     }
-    println!("GUEST_HTTP_NEGATIVE_PASS={count} SOURCE_REF=repository-pin");
-    Ok(())
+    Ok(count)
+    })();
+    match outcome {
+        Ok(count) => {
+            println!("GUEST_HTTP_NEGATIVE_PASS={count} PROVENANCE=SEPARATE_RECEIPT_REQUIRED");
+            Ok(())
+        }
+        Err(error) => {
+            server.preserve_log = true;
+            Err(error)
+        }
+    }
 }
 
 fn main() {
