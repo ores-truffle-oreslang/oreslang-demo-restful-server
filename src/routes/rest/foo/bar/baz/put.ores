@@ -6,6 +6,9 @@ define isoactor Handler as
     val request = http.claim(mail.value);
     val span = telemetry.actor_started(rt borrow request, "isolated");
     let int telemetry_status = 0;
+    // Only this handler may clean a staging file it successfully created.
+    // A pre-existing untrusted symlink must be preserved for inspection.
+    let bool stage_owned = false;
     try {
       request.set_header("X-Route-File", "src/routes/rest/foo/bar/baz/put.ores");
       if request.header("Content-Type") != "text/plain"; then
@@ -23,8 +26,10 @@ define isoactor Handler as
       fi
 
       await store.stage_for_size(body);
+      stage_owned = true;
       val int body_bytes = await store.staged_size();
       await store.clear_stage();
+      stage_owned = false;
       if body_bytes > store.max_resource_bytes(); then
         await request.respond(413, "text/plain", "resource exceeds persisted byte quota");
         telemetry_status = 413;
@@ -41,6 +46,17 @@ define isoactor Handler as
       return;
     } catch (failure) {
       span.event("ERROR", "handler failed");
+      // A failed size/stat/unlink can leave quota staging after successful
+      // installation. Best-effort async cleanup must not mask the original
+      // failure or attempt to unlink an unowned pre-existing symlink.
+      if stage_owned; then
+        try {
+          await store.clear_stage();
+          stage_owned = false;
+        } catch (cleanup_failure) {
+          span.event("ERROR", "quota staging cleanup failed");
+        }
+      fi
       if request.can_respond; then
         await request.respond(500, "text/plain", "Internal Server Error");
         telemetry_status = 500;
