@@ -1,6 +1,7 @@
 //! Strict raw HTTP/1.1 negative tests against an actual disposable AttoLang server.
 //! No crates, remote connections, mocks, credentials or guest-parity shortcuts.
 #![forbid(unsafe_code)]
+#[cfg(test)]
 use std::collections::HashSet;
 use std::env;
 use std::fs::{self, File};
@@ -128,12 +129,27 @@ fn classify_case(name: &str, codes: &[u16], closed: bool) -> Result<Classificati
     classify(codes, closed)
 }
 
+// RFC 9112 allows an HTTP parser to recognize a lone LF, and RFC 9110
+// permits treating a higher same-major minor version as HTTP/1.1. Both
+// interoperability probes are GET /health only: verify the exact response
+// bytes; they must never grant acceptance to a mutating request.
+fn compatible_health_response(name: &str, codes: &[u16], closed: bool, raw: &[u8]) -> bool {
+    if !matches!(name, "bare LF GET health" | "higher HTTP/1 minor GET health")
+        || codes != [200] || !closed {
+        return false;
+    }
+    response_body(raw).ok().as_deref() == Some(b"{\"status\":\"ok\"}")
+}
+
 fn denied(port: u16, name: &str, payload: &[u8]) -> Result<(), String> {
     for _ in 0..5 {
         let (reply, closed) = transmit(port, payload)
             .map_err(|e| format!("{name}: raw transport: {e}"))?;
         let codes = checked_statuses(&reply)
             .map_err(|e| format!("{name}: invalid HTTP response: {e}"))?;
+        if compatible_health_response(name, &codes, closed, &reply) {
+            return Ok(());
+        }
         match classify_case(name, &codes, closed)? {
             Classification::Denied => return Ok(()),
             Classification::RetryCapacity => thread::sleep(Duration::from_millis(30)),
@@ -167,9 +183,10 @@ fn cases() -> Vec<(&'static str, Vec<u8>)> {
     push!("obs-fold Transfer-Encoding",
           b"Content-Type: text/plain\r\nTransfer-Encoding: chunked\r\n evil\r\n",
           b"0\r\n\r\n");
-    result.push(("bare LF framing",
-        b"POST /foo/bar/baz HTTP/1.1\nHost: 127.0.0.1\nConnection: close\nContent-Type: text/plain\nContent-Length: 3\n\nabc".to_vec()));
-    push!("truncated fixed-length body", b"Content-Length: 12\r\n", b"abc");
+    result.push(("bare LF GET health",
+        b"GET /health HTTP/1.1\nHost: 127.0.0.1\nConnection: close\n\n".to_vec()));
+    push!("truncated fixed-length body",
+          b"Content-Type: text/plain\r\nContent-Length: 12\r\n", b"abc");
     push!("invalid UTF-8 body", b"Content-Type: text/plain\r\nContent-Length: 1\r\n", &[0xff]);
     push!("declared length exceeds 64 KiB", b"Content-Length: 65537\r\n", b"");
     let mut large = b"10000\r\n".to_vec();
@@ -177,7 +194,7 @@ fn cases() -> Vec<(&'static str, Vec<u8>)> {
     large.extend_from_slice(b"\r\n1\r\ny\r\n0\r\n\r\n");
     result.push(("chunked body exceeds 64 KiB", request("POST", RESOURCE,
         b"Content-Type: text/plain\r\nTransfer-Encoding: chunked\r\n", &large)));
-    result.push(("unsupported HTTP version",
+    result.push(("higher HTTP/1 minor GET health",
         wire("GET", "/health", "HTTP/1.2", b"", b"")));
     result
 }
@@ -420,7 +437,7 @@ mod tests {
     fn payloads_are_unique_bounded_and_loopback_only() {
         let entries = cases();
         let mut names = HashSet::new();
-        assert!(entries.len() >= 14);
+        assert!(entries.len() >= 16);
         for (name, payload) in entries {
             assert!(names.insert(name), "duplicate test name");
             assert!(!payload.is_empty() && payload.len() < 70000);
@@ -493,6 +510,18 @@ mod tests {
         assert_eq!(response_body(raw).unwrap(), b"bad");
         let short = b"HTTP/1.1 200 OK\r\nContent-Length: 18\r\n\r\nshort";
         assert!(response_body(short).is_err());
+    }
+
+    #[test]
+    fn same_major_compatibility_requires_exact_healthy_get() {
+        let good = b"HTTP/1.1 200 OK\r\nContent-Length: 15\r\n\r\n{\"status\":\"ok\"}";
+        assert!(compatible_health_response("bare LF GET health", &[200], true, good));
+        assert!(compatible_health_response("higher HTTP/1 minor GET health", &[200], true, good));
+        assert!(!compatible_health_response("invalid UTF-8 body", &[200], true, good));
+        assert!(!compatible_health_response("bare LF GET health", &[200], false, good));
+        assert!(!compatible_health_response("bare LF GET health", &[201], true, good));
+        assert!(!compatible_health_response("bare LF GET health", &[200], true,
+                 b"HTTP/1.1 200 OK\r\nContent-Length: 1\r\n\r\nx"));
     }
 
     #[test]
