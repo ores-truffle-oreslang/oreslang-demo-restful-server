@@ -66,7 +66,7 @@ jobs:
           grep -Fq 'resource exceeds persisted byte quota' src/routes/rest/foo/bar/baz/patch.ores
           grep -Fq '.baz.quota-stage.txt' scripts/generate-routes.py
           # Unbounded reads must not reenter the guest store API.
-          if grep -Eq 'fs\\.read_text_async|pub fnc read\\(' src/lib/store.ores; then
+          if grep -Fq 'fs.read_text_async' src/lib/store.ores || grep -Fq 'pub fnc read()' src/lib/store.ores; then
             echo 'Unbounded guest file read regressed' >&2
             exit 1
           fi
