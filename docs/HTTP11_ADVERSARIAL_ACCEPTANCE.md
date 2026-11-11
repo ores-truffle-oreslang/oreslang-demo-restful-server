@@ -58,3 +58,15 @@ runs `NOT_EXECUTED`. The compiler/Spin dependencies are private; public-demo
 Actions cannot assume cross-repository access. Never loosen the strict
 `ci/source-policy.sh` Python prohibition or export private sources without
 explicit destination authorization and identity verification.
+
+## Hardening follow-up (2026-11-10)
+
+The harness requires the server to announce its selected listening port
+before trusting a response, rejects partial writes, incomplete replies and
+multiple response status lines (including two 4xx replies), and decodes
+`Content-Length` or chunked baseline bodies for byte-for-byte equality.
+Failure receipts on Unix are created in a private 0700 temporary directory;
+a custom `REST_SERVER_BINARY` must be an absolute path. A correct HTTP
+status alone does **not** prove the connection reached EOF or the resource
+representation was preserved.
+
