@@ -44,7 +44,9 @@ guest application AOT compilation.
 - After every denial, exact sentinel persistence, successful GET and /health
 
 The desired contract accepts only an explicit 400/408/413/414/422/431/505 or
-a fully closed transport without any response. A 503 is *inconclusive* (retry).
+a fully closed transport without any response. A 503 is *inconclusive* (retry). Per RFC 9112 §6.1, the **unsupported Transfer-Encoding**
+case alone may also return HTTP 501 when the connection closes; any 501 for
+another malformed request remains a failure.
 An unexpected 200/201/204, 409, 500, a smuggled 200 or hung connection fails.
 This is a strict *target*, not a claim that the pinned runtime passes yet.
 
