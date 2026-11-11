@@ -39,6 +39,7 @@ jobs:
           bash -n scripts/test.sh
           bash -n scripts/lib/guards.sh
           bash -n scripts/test-guards.sh
+          bash -n scripts/read-only-http-transport-smoke.sh
       - name: Check source and submodule trust guards
         run: bash scripts/test-guards.sh
       - name: Check bounded embedded-app extraction
@@ -50,6 +51,8 @@ jobs:
           java -cp .cache/archive-test dev.oreslang.demo.EmbeddedAppArchiveTest
       - name: Check route source publication
         run: python3 -m unittest discover -s tests -p test_route_publication.py -v
+      - name: Check read-only smoke script harness (synthetic HTTP, host only)
+        run: python3 -m unittest discover -s tests -p test_read_only_http_smoke_host.py -v
       - name: Check capability-input guards are present
         run: |
           grep -Fq 'PORT must be a decimal integer in 1..65535.' scripts/run-server.sh
