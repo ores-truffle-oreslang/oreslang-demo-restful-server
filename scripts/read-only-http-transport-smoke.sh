@@ -28,15 +28,19 @@ seen='|'
 check_exchange() {
   local expected_actor="$1" id trace mode
   local -a ids traces modes
-  mapfile -t ids < <(awk 'tolower($1)=="x-request-id:" {gsub(/\r/,"",$2); print $2}' "$tmp/headers")
-  mapfile -t traces < <(awk 'tolower($1)=="x-ores-trace-id:" {gsub(/\r/,"",$2); print $2}' "$tmp/headers")
-  mapfile -t modes < <(awk 'tolower($1)=="x-actor-mode:" {gsub(/\r/,"",$2); print $2}' "$tmp/headers")
+  mapfile -t ids < <(awk 'tolower($1)=="x-request-id:" {if(NF!=2){print "__malformed__"; next} gsub(/\r/,"",$2); print $2}' "$tmp/headers")
+  mapfile -t traces < <(awk 'tolower($1)=="x-ores-trace-id:" {if(NF!=2){print "__malformed__"; next} gsub(/\r/,"",$2); print $2}' "$tmp/headers")
+  mapfile -t modes < <(awk 'tolower($1)=="x-actor-mode:" {if(NF!=2){print "__malformed__"; next} gsub(/\r/,"",$2); print $2}' "$tmp/headers")
   [[ ${#ids[@]} -eq 1 ]] || { echo "missing/duplicate request identity" >&2; return 1; }
   id="${ids[0]}"
   [[ "$id" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] ||
     { echo "missing/invalid request identity" >&2; return 1; }
-  [[ "$seen" != *"|$id|"* ]] || { echo "request identity reused" >&2; return 1; }
-  seen="$seen$id|"
+  # UUID hex is case-insensitive: upper/lower spellings are the same identity.
+  # Canonicalize before deduplication; never let casing bypass replay detection.
+  local normalized_id
+  normalized_id="$(printf '%s' "$id" | LC_ALL=C tr 'A-F' 'a-f')"
+  [[ "$seen" != *"|$normalized_id|"* ]] || { echo "request identity reused" >&2; return 1; }
+  seen="$seen$normalized_id|"
   [[ ${#traces[@]} -eq 1 ]] || { echo "missing/duplicate trace identity" >&2; return 1; }
   trace="${traces[0]}"
   [[ "$trace" == "ores-trace-$id" ]] ||
