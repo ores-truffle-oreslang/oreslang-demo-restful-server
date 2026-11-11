@@ -291,15 +291,29 @@ def main():
                 outside = directory / "outside-quota-target.txt"
                 outside.write_bytes(b"outside file must survive")
                 staged.symlink_to(outside)
+                for method in ("POST", "PUT", "PATCH"):
+                    status, payload, _ = request(
+                        server.port, method, "/foo/bar/baz", b"update",
+                        {"Content-Type": "text/plain"},
+                    )
+                    assert status == 500, (method, status, payload)
+                    assert resource.read_bytes() == saved_resource
+                    assert outside.read_bytes() == b"outside file must survive"
+                    # The cleanup catch must NOT delete unowned symlinks.
+                    assert staged.is_symlink(), method
+                    checks += 1
+                staged.unlink()
+                # Recovery after a failed size stage must not reuse stale
+                # staging contents or poison the next actor's request.
                 status, payload, _ = request(
-                    server.port, "PATCH", "/foo/bar/baz", b"update",
+                    server.port, "PATCH", "/foo/bar/baz", b"ok",
                     {"Content-Type": "text/plain"},
                 )
-                assert status == 500, (status, payload)
-                assert resource.read_bytes() == saved_resource
-                assert outside.read_bytes() == b"outside file must survive"
-                assert staged.is_symlink()
-                staged.unlink()
+                assert status == 200, (status, payload)
+                assert payload == saved_resource + b"ok"
+                assert resource.read_bytes() == saved_resource + b"ok"
+                assert not staged.exists()
+                resource.write_bytes(saved_resource)
                 checks += 1
 
             # A real response must produce one completed request span and the
