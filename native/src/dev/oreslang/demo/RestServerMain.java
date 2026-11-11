@@ -5,7 +5,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
-import java.util.zip.ZipInputStream;
 
 /** Native application entrypoint: no shell, Python, Java installation, or source checkout needed. */
 public final class RestServerMain {
@@ -56,10 +55,7 @@ public final class RestServerMain {
         try {
             EmbeddedAppArchive.extract(RestServerMain.class.getResourceAsStream("/ores-app.zip"), application);
             Path config = application.resolve("src/generated/config.ores");
-            Files.writeString(config, "define module config as\n"
-                    + "  pub fnc port(): int { return " + port + "; }\n"
-                    + "  pub fnc data_path(): String { return " + quote(data.resolve("baz.txt").toString()) + "; }\n"
-                    + "end\n");
+            Files.writeString(config, NativeConfig.render(port, data));
             var options = new java.util.ArrayList<String>();
             if (mode != null) options.add(mode);
             options.add("--platform=server");
@@ -72,11 +68,6 @@ public final class RestServerMain {
             Runtime.getRuntime().removeShutdownHook(cleanup);
             removeTree(application);
         }
-    }
-
-    private static String quote(String value) {
-        return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"")
-                .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t") + "\"";
     }
 
     private static void removeTree(Path root) {
