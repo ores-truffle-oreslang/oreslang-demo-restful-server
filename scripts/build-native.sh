@@ -42,6 +42,7 @@ PY
 classpath="$source_dir/target/classes:$(cat "$source_dir/target/classpath.txt")"
 "$JAVA_HOME/bin/javac" --release 21 -cp "$classpath" -d "$classes" \
   "$root/native/src/dev/oreslang/demo/EmbeddedAppArchive.java" \
+  "$root/native/src/dev/oreslang/demo/NativeConfig.java" \
   "$root/native/src/dev/oreslang/demo/RestServerMain.java"
 platform="$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m)"
 dist="$root/dist/rest-server-$mode-$platform"
