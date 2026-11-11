@@ -65,3 +65,18 @@ jobs:
           grep -Fq 'stored resource exceeds persisted byte quota' src/routes/rest/foo/bar/baz/get.ores
           grep -Fq 'resource exceeds persisted byte quota' src/routes/rest/foo/bar/baz/patch.ores
           grep -Fq '.baz.quota-stage.txt' scripts/generate-routes.py
+          # Unbounded reads must not reenter the guest store API.
+          if grep -Eq 'fs\\.read_text_async|pub fnc read\\(' src/lib/store.ores; then
+            echo 'Unbounded guest file read regressed' >&2
+            exit 1
+          fi
+          # Host-only structural checks: actual catch/finalization requires
+          # compiler-backed execution before merge.
+          for method in post put patch; do
+            handler="src/routes/rest/foo/bar/baz/$method.ores"
+            grep -Fq 'let bool stage_owned = false;' "$handler"
+            grep -Fq 'stage_owned = true;' "$handler"
+            grep -Fq 'stage_owned = false;' "$handler"
+            grep -Fq 'if stage_owned; then' "$handler"
+            grep -Fq 'quota staging cleanup failed' "$handler"
+          done
