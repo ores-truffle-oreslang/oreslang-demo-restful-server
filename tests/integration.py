@@ -35,7 +35,12 @@ class Server:
         self.log = (directory / "server.log").open("w+")
         self.env = dict(os.environ, PORT=str(self.port), DATA_DIR=str(directory / "data"))
         native = os.environ.get("REST_SERVER_BINARY")
-        command = [native] if native else [str(ROOT / "scripts/run-server.sh")]
+        launcher = os.environ.get("REST_SERVER_LAUNCHER")
+        if native and launcher:
+            raise ValueError("Set only one of REST_SERVER_BINARY and REST_SERVER_LAUNCHER")
+        # A private CI mirror may supply a launcher after independently verifying
+        # all source blobs; production run-server.sh still checks local Git pins.
+        command = [native or launcher or str(ROOT / "scripts/run-server.sh")]
         if native and os.environ.get("REST_EXECUTION_MODE"):
             command.append("--mode=" + os.environ["REST_EXECUTION_MODE"])
         command.extend(extra_args)
