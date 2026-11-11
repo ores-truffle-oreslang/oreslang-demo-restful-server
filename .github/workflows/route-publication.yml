@@ -46,12 +46,40 @@ jobs:
           mkdir -p .cache/archive-test
           javac --release 21 -d .cache/archive-test \
             native/src/dev/oreslang/demo/EmbeddedAppArchive.java \
-            native/test/dev/oreslang/demo/EmbeddedAppArchiveTest.java
+            native/test/dev/oreslang/demo/EmbeddedAppArchiveTest.java \
+            native/src/dev/oreslang/demo/NativeConfig.java \
+            native/test/dev/oreslang/demo/NativeConfigTest.java
           java -cp .cache/archive-test dev.oreslang.demo.EmbeddedAppArchiveTest
+          java -cp .cache/archive-test dev.oreslang.demo.NativeConfigTest
       - name: Check route source publication
         run: python3 -m unittest discover -s tests -p test_route_publication.py -v
-      - name: Check capability-input guards are present
+      - name: Check capability-input and persisted quota guards
         run: |
           grep -Fq 'PORT must be a decimal integer in 1..65535.' scripts/run-server.sh
           grep -Fq 'Refusing to grant demo filesystem capabilities to the filesystem root.' scripts/run-server.sh
           grep -Fq 'DATA_DIR cannot contain a comma' scripts/run-server.sh
+          grep -Fq 'return 1048576;' src/lib/store.ores
+          grep -Fq 'fs.write_text_atomic_async' src/lib/store.ores
+          grep -Fq 'fs.file_size_async' src/lib/store.ores
+          grep -Fq 'fs.read_text_bounded_async' src/lib/store.ores
+          grep -Fq 'store.read_bounded()' src/routes/rest/foo/bar/baz/get.ores
+          grep -Fq 'store.read_bounded()' src/routes/rest/foo/bar/baz/patch.ores
+          grep -Fq 'val int persisted_bytes = await store.size();' src/routes/rest/foo/bar/baz/get.ores
+          grep -Fq 'stored resource exceeds persisted byte quota' src/routes/rest/foo/bar/baz/get.ores
+          grep -Fq 'resource exceeds persisted byte quota' src/routes/rest/foo/bar/baz/patch.ores
+          grep -Fq '.baz.quota-stage.txt' scripts/generate-routes.py
+          # Unbounded reads must not reenter the guest store API.
+          if grep -Fq 'fs.read_text_async' src/lib/store.ores || grep -Fq 'pub fnc read()' src/lib/store.ores; then
+            echo 'Unbounded guest file read regressed' >&2
+            exit 1
+          fi
+          # Host-only structural checks: actual catch/finalization requires
+          # compiler-backed execution before merge.
+          for method in post put patch; do
+            handler="src/routes/rest/foo/bar/baz/$method.ores"
+            grep -Fq 'let bool stage_owned = false;' "$handler"
+            grep -Fq 'stage_owned = true;' "$handler"
+            grep -Fq 'stage_owned = false;' "$handler"
+            grep -Fq 'if stage_owned; then' "$handler"
+            grep -Fq 'quota staging cleanup failed' "$handler"
+          done

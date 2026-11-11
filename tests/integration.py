@@ -27,6 +27,23 @@ def request(port, method, path, body=None, headers=None):
         time.sleep(0.02)
     raise AssertionError("server admission did not recover")
 
+def request_chunked(port, method, path, chunks):
+    """Send chunked HTTP/1.1 without a Content-Length header."""
+    connection = http.client.HTTPConnection("127.0.0.1", port, timeout=12)
+    try:
+        connection.request(
+            method,
+            path,
+            body=iter(chunks),
+            headers={"Content-Type": "text/plain"},
+            encode_chunked=True,
+        )
+        response = connection.getresponse()
+        return response.status, response.read(), dict(response.getheaders())
+    finally:
+        connection.close()
+
+
 class Server:
     def __init__(self, directory, extra_args=()):
         with socket.socket() as listener:
@@ -113,6 +130,191 @@ def main():
             assert (status, body) == (200, b"")
             assert headers["X-actor-mode"] == "shared", headers
             checks += 1
+
+            # Persisted quota is measured in UTF-8 bytes, not characters.
+            # One Unicode scalar here occupies two bytes. Starting one byte
+            # below the 1 MiB quota must therefore reject without mutation.
+            resource = directory / "data/baz.txt"
+            saved_resource = resource.read_bytes()
+            # Listener body_limit_bytes is 65536 (src/main.ores). The pinned
+            # NativeHttp.bodyText() reads at most bodyLimit+1 bytes, including
+            # chunked requests; prove the boundary through actual HTTP.
+            # Over-limit rejection must not enter the handler, mutate data,
+            # leave quota staging, or silently truncate a UTF-8 scalar.
+            stage = directory / "data/.baz.quota-stage.txt"
+            at_limit = b"x" * 65536
+            for method, incoming in [
+                ("POST", b"x" * 65537),
+                ("PUT", b"x" * 65537),
+                ("PATCH", b"x" * 65537),
+                ("PATCH", b"x" * 65535 + "é".encode("utf-8")),
+            ]:
+                status, payload, _ = request(
+                    server.port, method, "/foo/bar/baz", incoming,
+                    {"Content-Type": "text/plain"},
+                )
+                assert status == 413, (method, len(incoming), status, payload)
+                assert resource.read_bytes() == saved_resource
+                assert not stage.exists()
+                checks += 1
+
+            # Exactly at the configured body limit is admitted. Since the
+            # resource exists, POST reports 409 without replacing its bytes.
+            status, payload, _ = request(
+                server.port, "POST", "/foo/bar/baz", at_limit,
+                {"Content-Type": "text/plain"},
+            )
+            assert status == 409, (status, payload)
+            assert resource.read_bytes() == saved_resource
+            assert not stage.exists()
+            checks += 1
+
+            # Content-Length is a preflight bound, even if the caller lies
+            # about the actual body size (shorter than the declared size).
+            status, payload, _ = request(
+                server.port, "PUT", "/foo/bar/baz", at_limit,
+                {"Content-Type": "text/plain", "Content-Length": "65537"},
+            )
+            assert status == 413, (status, payload)
+            assert resource.read_bytes() == saved_resource
+            assert not stage.exists()
+            checks += 1
+
+            # Chunked transfer has no Content-Length. Count decoded bytes,
+            # including one byte crossing the exact limit.
+            for chunks, expected_status in [
+                ([b"a" * 32768, b"b" * 32768, b"c"], 413),
+                ([b"a" * 32768, b"b" * 32768], 409),
+            ]:
+                status, payload, _ = request_chunked(
+                    server.port, "POST", "/foo/bar/baz", chunks,
+                )
+                assert status == expected_status, (status, payload)
+                assert resource.read_bytes() == saved_resource
+                assert not stage.exists()
+                checks += 1
+
+            resource.write_bytes(b"x" * (1048576 - 1))
+            status, payload, _ = request(
+                server.port,
+                "PATCH",
+                "/foo/bar/baz",
+                "é".encode("utf-8"),
+                {"Content-Type": "text/plain"},
+            )
+            assert status == 413, (status, payload)
+            assert resource.stat().st_size == 1048576 - 1
+            assert resource.read_bytes() == b"x" * (1048576 - 1)
+            assert not (directory / "data/.baz.quota-stage.txt").exists()
+            resource.write_bytes(saved_resource)
+            checks += 1
+
+            # Reject an already-corrupted/over-quota authoritative resource
+            # before reading it into actor state, and preserve its bytes.
+            over_quota = b"z" * (1048576 + 1)
+            resource.write_bytes(over_quota)
+            status, payload, _ = request(
+                server.port, "PATCH", "/foo/bar/baz", b"x",
+                {"Content-Type": "text/plain"},
+            )
+            assert status == 413, (status, payload)
+            assert resource.read_bytes() == over_quota
+            assert not (directory / "data/.baz.quota-stage.txt").exists()
+            checks += 1
+
+            # GET must also reject an out-of-band oversized resource before
+            # materializing its text. Server-side persistence corruption is
+            # a 500, not an oversized incoming request (413).
+            status, payload, _ = request(server.port, "GET", "/foo/bar/baz")
+            assert status == 500, (status, payload)
+            assert b"stored resource exceeds persisted byte quota" in payload
+            assert resource.read_bytes() == over_quota
+            checks += 1
+
+            # The exact byte ceiling is still readable; the bounded reader
+            # must not reject a valid 1 MiB UTF-8 ASCII resource.
+            at_limit = b"y" * 1048576
+            resource.write_bytes(at_limit)
+            status, payload, _ = request(server.port, "GET", "/foo/bar/baz")
+            assert status == 200, (status, payload[:100])
+            assert payload == at_limit
+            resource.write_bytes(saved_resource)
+            checks += 1
+
+            # An invalid UTF-8 persisted representation must fail strict
+            # decoding without returning replacement text or modifying bytes.
+            invalid_utf8 = bytes([0xc3, 0x28])
+            resource.write_bytes(invalid_utf8)
+            status, payload, _ = request(server.port, "GET", "/foo/bar/baz")
+            assert status == 500, (status, payload)
+            assert resource.read_bytes() == invalid_utf8
+            checks += 1
+            status, payload, _ = request(
+                server.port, "PATCH", "/foo/bar/baz", b"suffix",
+                {"Content-Type": "text/plain"},
+            )
+            assert status == 500, (status, payload)
+            assert resource.read_bytes() == invalid_utf8
+            assert not (directory / "data/.baz.quota-stage.txt").exists()
+            resource.write_bytes(saved_resource)
+            checks += 1
+
+            # A symlink in place of the authoritative persisted resource must
+            # not cause the app to read or replace the outside target.
+            if os.name == "posix":
+                outside_resource = directory / "outside-resource-target.txt"
+                outside_resource.write_bytes(b"outside sentinel survives")
+                resource.unlink()
+                resource.symlink_to(outside_resource)
+                try:
+                    status, payload, _ = request(server.port, "GET", "/foo/bar/baz")
+                    assert status == 500, (status, payload)
+                    assert outside_resource.read_bytes() == b"outside sentinel survives"
+                    checks += 1
+                    status, payload, _ = request(
+                        server.port, "PUT", "/foo/bar/baz", b"overwrite",
+                        {"Content-Type": "text/plain"},
+                    )
+                    assert status == 500, (status, payload)
+                    assert resource.is_symlink()
+                    assert outside_resource.read_bytes() == b"outside sentinel survives"
+                    checks += 1
+                finally:
+                    resource.unlink()
+                    resource.write_bytes(saved_resource)
+
+            # An attacker-controlled symlink at the quota-staging path must
+            # not be followed by async atomic replacement; this exercises the
+            # real handler/runtime capability boundary, not a static grep.
+            if os.name == "posix":
+                staged = directory / "data/.baz.quota-stage.txt"
+                outside = directory / "outside-quota-target.txt"
+                outside.write_bytes(b"outside file must survive")
+                staged.symlink_to(outside)
+                for method in ("POST", "PUT", "PATCH"):
+                    status, payload, _ = request(
+                        server.port, method, "/foo/bar/baz", b"update",
+                        {"Content-Type": "text/plain"},
+                    )
+                    assert status == 500, (method, status, payload)
+                    assert resource.read_bytes() == saved_resource
+                    assert outside.read_bytes() == b"outside file must survive"
+                    # The cleanup catch must NOT delete unowned symlinks.
+                    assert staged.is_symlink(), method
+                    checks += 1
+                staged.unlink()
+                # Recovery after a failed size stage must not reuse stale
+                # staging contents or poison the next actor's request.
+                status, payload, _ = request(
+                    server.port, "PATCH", "/foo/bar/baz", b"ok",
+                    {"Content-Type": "text/plain"},
+                )
+                assert status == 200, (status, payload)
+                assert payload == saved_resource + b"ok"
+                assert resource.read_bytes() == saved_resource + b"ok"
+                assert not staged.exists()
+                resource.write_bytes(saved_resource)
+                checks += 1
 
             # A real response must produce one completed request span and the
             # correct actor/dispatch hierarchy, including framework responses.

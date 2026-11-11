@@ -96,9 +96,30 @@ responses identify their route source file through `X-Route-File`.
 Admission is **one active request**, held until its actor finishes. This serializes
 file operations within a single server process; excess concurrent requests get
 503. The curl script retries only admission rejection. Use one server process per
-data directory. This is deliberately a small persistence demo: file writes are
-not crash-atomic database transactions, appended resources have no total-size
-quota, and there is no authentication or production concurrency claim.
+data directory. This is deliberately a small persistence demo: single-file
+atomic replacement is not a multi-operation database transaction, the persisted
+resource is limited to **1 MiB of UTF-8 bytes**, and there is no authentication
+or production concurrency claim. The HTTP listener is separately configured
+with **64 KiB maximum inbound body bytes** in `src/main.ores`. At pinned Java
+source `a3498d226b521258517f41375b985abbbdd60868`, `NativeHttp.bodyText()`
+reads at most `bodyLimit + 1` bytes before rejecting a larger body; incoming
+`Content-Length` exceeding the limit is rejected before guest admission.
+
+The persisted quota is checked after encoding and writing a same-directory
+temporary stage, so it is **not** a 1 MiB upper bound on transient staging.
+For PATCH, an already-valid 1 MiB resource plus a permitted 64 KiB incoming
+body can transiently stage up to 1 MiB + 64 KiB before the 413 response and
+stage cleanup. Real HTTP regression tests must verify the limit, chunked
+transfers, UTF-8 boundary, and unchanged persisted bytes after rejection.
+A handler that successfully installs the quota stage also attempts asynchronous
+cleanup if staging-size or stage-removal operations throw. This is best-effort
+cleanup, not a guarantee under process death or abrupt cancellation. Separate
+fault-injection guest runs are still required to prove deterministic reclamation.
+The single-request admission rule is per process; do not run multiple servers
+against one data directory.
+
+These source-level limits are **not** a claim of executed JDK25 guest integration
+or AOT/native backend parity.
 
 The server binds loopback, allows network access only to its configured local
 port, and scopes file read/write permission to the data directory. Request paths
@@ -135,6 +156,14 @@ compiles a native application launcher, and packages the pthread carrier library
 and license notices. It produces `dist/rest-server-aot-<os>-<arch>.tar.gz` (or
 `rest-server-hybrid-...`). Python, Maven, Java, Git and compiler source are build
 requirements only. The server in the resulting archive needs none of them.
+
+The native launcher regenerates the embedded guest config with the **same
+three public functions** as the interpreter-generated config: `port()`,
+`data_path()`, and `quota_staging_path()`. The previously missing third
+function would make the quota-enabled native distribution inconsistent with
+its guest handlers. `NativeConfigTest` runs in the host route-publication
+workflow without compiler access, but the actual native launcher/guest build
+still requires an executed authorized runtime and distribution check.
 
 After unpacking the matching platform archive:
 
