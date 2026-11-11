@@ -46,12 +46,9 @@ fn transmit(port: u16, payload: &[u8]) -> io::Result<(Vec<u8>, bool)> {
     let mut socket = TcpStream::connect_timeout(&addr, Duration::from_secs(4))?;
     socket.set_read_timeout(Some(Duration::from_secs(5)))?;
     socket.set_write_timeout(Some(Duration::from_secs(5)))?;
-    if let Err(e) = socket.write_all(payload) {
-        if matches!(e.kind(), io::ErrorKind::BrokenPipe | io::ErrorKind::ConnectionReset) {
-            return Ok((Vec::new(), true));
-        }
-        return Err(e);
-    }
+    // A reset during send does not prove the parser received the full malformed
+    // frame. Treat it as inconclusive, never as a passing closed connection.
+    socket.write_all(payload)?;
     let _ = socket.shutdown(Shutdown::Write);
     let mut bytes = Vec::new();
     let mut closed = false;
@@ -64,10 +61,10 @@ fn transmit(port: u16, payload: &[u8]) -> io::Result<(Vec<u8>, bool)> {
                 closed = true; break;
             }
             Err(e) if matches!(e.kind(), io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock) => {
-                if statuses(&bytes).is_empty() {
-                    return Err(io::Error::new(io::ErrorKind::TimedOut, "no HTTP status or EOF"));
-                }
-                break;
+                // A status line alone is not a complete response. An HTTP/1.1
+                // peer asked for Connection: close must close rather than hang.
+                return Err(io::Error::new(io::ErrorKind::TimedOut,
+                    format!("incomplete response/connection not closed: {}", e)));
             }
             Err(e) => return Err(e),
         }
@@ -82,12 +79,14 @@ fn transmit(port: u16, payload: &[u8]) -> io::Result<(Vec<u8>, bool)> {
 enum Classification { Denied, RetryCapacity }
 
 fn classify(codes: &[u16], closed: bool) -> Result<Classification, String> {
-    if codes == [503] { return Ok(Classification::RetryCapacity); }
+    if codes == [503] && closed { return Ok(Classification::RetryCapacity); }
     if codes.is_empty() {
         return if closed { Ok(Classification::Denied) }
         else { Err("neither rejection nor closed transport".into()) };
     }
-    if codes.iter().all(|code| DENIALS.contains(code)) {
+    // Even multiple 4xx responses may indicate HTTP request desynchronization.
+    // Require precisely one denial and that the Connection: close request closed.
+    if codes.len() == 1 && DENIALS.contains(&codes[0]) && closed {
         Ok(Classification::Denied)
     } else {
         Err(format!("unexpected status sequence {codes:?}"))
@@ -107,7 +106,6 @@ fn denied(port: u16, name: &str, payload: &[u8]) -> Result<(), String> {
 }
 
 fn cases() -> Vec<(&'static str, Vec<u8>)> {
-    let ct = b"Content-Type: text/plain\r\n";
     let mut result = Vec::new();
     macro_rules! push {
         ($name:expr, $headers:expr, $body:expr) => {
@@ -138,13 +136,83 @@ fn cases() -> Vec<(&'static str, Vec<u8>)> {
         b"Content-Type: text/plain\r\nTransfer-Encoding: chunked\r\n", &large)));
     result.push(("unsupported HTTP version",
         wire("GET", "/health", "HTTP/1.2", b"", b"")));
-    let _ = ct; // All bodies are dispatched to fixed test-only routes.
     result
+}
+
+// Extract an exact baseline body; never allow a sentinel appearing only in an
+// HTTP header (or a truncated/chunked response) to count as valid persistence.
+fn response_body(raw: &[u8]) -> Result<Vec<u8>, String> {
+    let pos = raw.windows(4).position(|w| w == b"\r\n\r\n")
+        .ok_or("missing HTTP header/body separator")?;
+    let head = std::str::from_utf8(&raw[..pos])
+        .map_err(|_| "invalid HTTP response header UTF-8")?;
+    let data = &raw[pos + 4..];
+    let mut content_length: Option<usize> = None;
+    let mut chunked = false;
+    for line in head.split("\r\n").skip(1) {
+        let Some((key, value)) = line.split_once(':') else {
+            return Err("malformed response header".into());
+        };
+        let value = value.trim();
+        if key.eq_ignore_ascii_case("content-length") {
+            if content_length.is_some() {
+                return Err("duplicate response Content-Length".into());
+            }
+            content_length = Some(value.parse::<usize>()
+                .map_err(|_| "invalid response Content-Length")?);
+        } else if key.eq_ignore_ascii_case("transfer-encoding") {
+            if chunked || !value.eq_ignore_ascii_case("chunked") {
+                return Err("unexpected response Transfer-Encoding".into());
+            }
+            chunked = true;
+        }
+    }
+    if chunked && content_length.is_some() {
+        return Err("ambiguous response framing".into());
+    }
+    if chunked {
+        let mut pos = 0;
+        let mut result = Vec::new();
+        loop {
+            let line_end = data[pos..].windows(2).position(|w| w == b"\r\n")
+                .ok_or("missing chunk-size terminator")? + pos;
+            let size_text = std::str::from_utf8(&data[pos..line_end])
+                .map_err(|_| "non-ASCII chunk size")?;
+            let size_text = size_text.split(';').next().unwrap_or("");
+            let size = usize::from_str_radix(size_text, 16)
+                .map_err(|_| "invalid chunk size")?;
+            pos = line_end + 2;
+            if size == 0 {
+                if data.get(pos..) != Some(b"\r\n".as_slice()) {
+                    return Err("unexpected chunk trailer or leftover bytes".into());
+                }
+                return Ok(result);
+            }
+            if result.len().saturating_add(size) > 32768 {
+                return Err("oversized baseline response".into());
+            }
+            let end = pos.checked_add(size).ok_or("chunk length overflow")?;
+            if end + 2 > data.len() || data.get(end..end + 2) != Some(b"\r\n".as_slice()) {
+                return Err("truncated chunk".into());
+            }
+            result.extend_from_slice(&data[pos..end]);
+            pos = end + 2;
+        }
+    }
+    if let Some(expected) = content_length {
+        if data.len() != expected {
+            return Err(format!("incorrect response body length: {} != {}", data.len(), expected));
+        }
+    }
+    Ok(data.to_vec())
 }
 
 fn require_status(port: u16, payload: &[u8], code: u16) -> Result<Vec<u8>, String> {
     for _ in 0..15 {
-        let (reply, _) = transmit(port, payload).map_err(|e| e.to_string())?;
+        let (reply, closed) = transmit(port, payload).map_err(|e| e.to_string())?;
+        if !closed {
+            return Err("baseline response lacked Connection: close".into());
+        }
         let found = statuses(&reply);
         if found == [503] {
             thread::sleep(Duration::from_millis(40));
@@ -196,13 +264,24 @@ fn start_server() -> Result<(Server, u16), String> {
     let mut server = Server { process: child, dir, preserve_log: false };
     let deadline = Instant::now() + Duration::from_secs(45);
     let health = request("GET", "/health", b"", b"");
+    let ready_marker = format!("Listening on http://127.0.0.1:{port}");
     while Instant::now() < deadline {
         if let Ok(Some(exit)) = server.process.try_wait() {
             server.preserve_log = true;
             return Err(format!("guest server exited at startup: {exit}"));
         }
-        if let Ok((reply, _)) = transmit(port, &health) {
-            if statuses(&reply) == [200] { return Ok((server, port)); }
+        // Prevent an unrelated process winning the ephemeral port race from
+        // masquerading as the child: the child must announce the selected port.
+        let log = fs::read_to_string(server.dir.join("server.log")).unwrap_or_default();
+        if !log.contains(&ready_marker) {
+            thread::sleep(Duration::from_millis(75));
+            continue;
+        }
+        if let Ok((reply, closed)) = transmit(port, &health) {
+            if closed && statuses(&reply) == [200]
+                && response_body(&reply).ok().as_deref() == Some(b"{\"status\":\"ok\"}") {
+                return Ok((server, port));
+            }
         }
         thread::sleep(Duration::from_millis(75));
     }
@@ -213,8 +292,9 @@ fn start_server() -> Result<(Server, u16), String> {
 fn run() -> Result<(), String> {
     let (mut server, port) = start_server()?;
     let outcome = (|| -> Result<usize, String> {
-    let create = request("POST", RESOURCE,
-        b"Content-Type: text/plain\r\nContent-Length: 18\r\n", SENTINEL);
+    let create_headers = format!("Content-Type: text/plain\r\nContent-Length: {}\r\n",
+                                SENTINEL.len());
+    let create = request("POST", RESOURCE, create_headers.as_bytes(), SENTINEL);
     require_status(port, &create, 201)?;
     let resource = server.dir.join("data/baz.txt");
     let original = fs::read(&resource).map_err(|e| e.to_string())?;
@@ -226,10 +306,13 @@ fn run() -> Result<(), String> {
             return Err(format!("{name}: rejected input mutated persisted bytes"));
         }
         let body = require_status(port, &request("GET", RESOURCE, b"", b""), 200)?;
-        if !body.windows(SENTINEL.len()).any(|part| part == SENTINEL) {
-            return Err(format!("{name}: successful GET did not return preserved bytes"));
+        if response_body(&body)? != SENTINEL {
+            return Err(format!("{name}: GET representation not byte-identical to sentinel"));
         }
-        require_status(port, &request("GET", "/health", b"", b""), 200)?;
+        let health = require_status(port, &request("GET", "/health", b"", b""), 200)?;
+        if response_body(&health)? != b"{\"status\":\"ok\"}" {
+            return Err(format!("{name}: health response changed after negative request"));
+        }
         count += 1;
         println!("PASS {name}: rejected, unchanged persisted bytes, healthy follow-up");
     }
@@ -293,9 +376,31 @@ mod tests {
     }
     #[test]
     fn accepts_only_specific_client_denials() {
-        for status in DENIALS { assert_eq!(classify(&[*status], false), Ok(Classification::Denied)); }
-        for status in [200, 201, 204, 404, 405, 409, 415, 500, 503] {
-            if status != 503 { assert!(classify(&[status], true).is_err()); }
+        for status in DENIALS {
+            assert_eq!(classify(&[*status], true), Ok(Classification::Denied));
+            assert!(classify(&[*status], false).is_err());
         }
+        for status in [200, 201, 204, 404, 405, 409, 415, 500] {
+            assert!(classify(&[status], true).is_err());
+        }
+        assert!(classify(&[400, 400], true).is_err());
+        assert!(classify(&[503, 400], true).is_err());
+        assert!(classify(&[503], false).is_err());
+    }
+
+    #[test]
+    fn exact_baseline_body_never_uses_header_substring() {
+        let raw = b"HTTP/1.1 200 OK\r\nX-Debug: untouched sentinel\r\nContent-Length: 3\r\n\r\nbad";
+        assert_eq!(response_body(raw).unwrap(), b"bad");
+        let short = b"HTTP/1.1 200 OK\r\nContent-Length: 18\r\n\r\nshort";
+        assert!(response_body(short).is_err());
+    }
+
+    #[test]
+    fn baseline_chunked_body_decodes_exactly() {
+        let raw = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n3\r\nabc\r\n2\r\nde\r\n0\r\n\r\n";
+        assert_eq!(response_body(raw).unwrap(), b"abcde");
+        let truncated = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n3\r\nab";
+        assert!(response_body(truncated).is_err());
     }
 }
