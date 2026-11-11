@@ -1,0 +1,39 @@
+name: HTTP adversarial harness (host only)
+on:
+  pull_request:
+    paths:
+      - 'tests/http_adversarial.py'
+      - 'tests/test_http_adversarial_host.py'
+      - 'tests/integration.py'
+      - 'docs/HTTP11_ADVERSARIAL_ACCEPTANCE.md'
+      - '.github/workflows/http-adversarial-harness.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  harness:
+    name: host classifier self-tests (NOT guest)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # pinned v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify exact head
+        shell: bash
+        env:
+          EXPECTED: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED"
+          echo "HOST_ONLY=1 HEAD_SHA=$EXPECTED"
+      - name: Syntax check
+        run: python3 -m py_compile tests/http_adversarial.py tests/test_http_adversarial_host.py tests/integration.py
+      - name: Harness classification self-tests (no compiler or guest)
+        run: python3 -m unittest discover -s tests -p 'test_http_adversarial_host.py' -v
+      - name: Explicit unverified guest boundary
+        run: |
+          echo 'REAL_ATTO_HTTP_NEGATIVES=NOT_EXECUTED'
+          echo 'JAVA_GRAAL_AOT=NOT_EXECUTED'
+          echo 'LLVM_NET_WASM_FORGE_PARITY=NOT_EXECUTED'
