@@ -45,8 +45,14 @@ guest application AOT compilation.
 
 The desired contract accepts only an explicit 400/408/413/414/422/431/505 or
 a fully closed transport without any response. A 503 is *inconclusive* (retry). Per RFC 9112 §6.1, the **unsupported Transfer-Encoding**
-case alone may also return HTTP 501 when the connection closes; any 501 for
-another malformed request remains a failure.
+case may return HTTP 501 when the connection closes, as may the folded
+unsupported Transfer-Encoding value. RFC 9112 §5.2 also permits a server to
+**unfold** an obsolete folded field rather than reject it. Therefore the
+folded Content-Type case accepts a closed HTTP 415 only when its canonicalized
+value fails application media-type validation and the persisted sentinel is
+unchanged. Folded Content-Length must not be accepted as a valid length; a
+folded Transfer-Encoding must not be interpreted as plain chunked. None of
+these exceptions extend to unrelated malformed requests.
 An unexpected 200/201/204, 409, 500, a smuggled 200 or hung connection fails.
 This is a strict *target*, not a claim that the pinned runtime passes yet.
 
@@ -72,3 +78,10 @@ a custom `REST_SERVER_BINARY` must be an absolute path. A correct HTTP
 status alone does **not** prove the connection reached EOF or the resource
 representation was preserved.
 
+
+A strict case with an unexpected response is recorded as `NOT_VERIFIED`;
+the harness continues checking subsequent cases **only while persisted
+bytes remain unchanged and GET/health recover**, then exits nonzero with all
+outstanding cases listed. A mutated resource or poisoned baseline aborts
+immediately. This avoids one nonsecurity protocol-compatibility response
+hiding later request-smuggling vulnerabilities.
