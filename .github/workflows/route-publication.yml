@@ -46,8 +46,11 @@ jobs:
           mkdir -p .cache/archive-test
           javac --release 21 -d .cache/archive-test \
             native/src/dev/oreslang/demo/EmbeddedAppArchive.java \
-            native/test/dev/oreslang/demo/EmbeddedAppArchiveTest.java
+            native/test/dev/oreslang/demo/EmbeddedAppArchiveTest.java \
+            native/src/dev/oreslang/demo/NativeConfig.java \
+            native/test/dev/oreslang/demo/NativeConfigTest.java
           java -cp .cache/archive-test dev.oreslang.demo.EmbeddedAppArchiveTest
+          java -cp .cache/archive-test dev.oreslang.demo.NativeConfigTest
       - name: Check route source publication
         run: python3 -m unittest discover -s tests -p test_route_publication.py -v
       - name: Check capability-input and persisted quota guards
