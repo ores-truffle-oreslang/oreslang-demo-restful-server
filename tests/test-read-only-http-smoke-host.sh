@@ -36,7 +36,15 @@ if [[ -n "$headers" ]]; then
     if [[ "${FAKE_MODE:-good}" == duplicate ]]; then id=1; fi
     request_id="$(printf '00000000-0000-0000-0000-%012d' "$id")"
     if [[ "${FAKE_MODE:-good}" == malformed_id ]]; then request_id='------------------------------------'; fi
-    printf 'X-Request-Id: %s\r\n' "$request_id" >> "$headers"
+    if [[ "${FAKE_MODE:-good}" == duplicate_case ]]; then
+      request_id='abcdefab-cdef-abcd-abcd-000000000001'
+      if ((count > 1)); then request_id='ABCDEFAB-CDEF-ABCD-ABCD-000000000001'; fi
+    fi
+    if [[ "${FAKE_MODE:-good}" == extra_id_field ]]; then
+      printf 'X-Request-Id: %s ignored\r\n' "$request_id" >> "$headers"
+    else
+      printf 'X-Request-Id: %s\r\n' "$request_id" >> "$headers"
+    fi
     if [[ "${FAKE_MODE:-good}" == duplicate_header ]]; then
       printf 'X-Request-Id: %s\r\n' "$request_id" >> "$headers"
     fi
@@ -81,6 +89,8 @@ test_fail() {
 }
 test_good
 test_fail duplicate 'request identity reused'
+test_fail duplicate_case 'request identity reused'
+test_fail extra_id_field 'missing/invalid request identity'
 test_fail missing_id 'missing/duplicate request identity'
 test_fail duplicate_header 'missing/duplicate request identity'
 test_fail malformed_id 'missing/invalid request identity'
@@ -96,4 +106,4 @@ for invalid in http://localhost:3000 http://0.0.0.0:3000 https://127.0.0.1:3000 
     echo "invalid endpoint accepted: $invalid" >&2; exit 1
   fi
 done
-echo 'PASS host-only: 1 success, 9 response negatives, 7 URL rejects; no guest executed'
+echo 'PASS host-only: 1 success, 11 response negatives, 7 URL rejects; no guest executed'
