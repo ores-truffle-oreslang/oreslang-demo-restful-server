@@ -41,6 +41,24 @@ fn statuses(response: &[u8]) -> Vec<u16> {
     }).collect()
 }
 
+// A response is not valid merely because one of its later lines resembles an
+// HTTP status line. This prevents proxy garbage / prefix injection from
+// becoming false-positive conformance evidence.
+fn checked_statuses(raw: &[u8]) -> Result<Vec<u16>, String> {
+    if raw.is_empty() { return Ok(Vec::new()); }
+    if !(raw.starts_with(b"HTTP/1.0 ") || raw.starts_with(b"HTTP/1.1 ")) {
+        return Err("response lacks a leading HTTP/1.x status line".into());
+    }
+    let first_end = raw.windows(2).position(|w| w == b"\r\n")
+        .ok_or("response status line lacks CRLF")?;
+    if first_end < 12 || !raw[9..12].iter().all(u8::is_ascii_digit) {
+        return Err("response status line has no 3-digit code".into());
+    }
+    let found = statuses(raw);
+    if found.is_empty() { return Err("response has no valid status".into()); }
+    Ok(found)
+}
+
 fn transmit(port: u16, payload: &[u8]) -> io::Result<(Vec<u8>, bool)> {
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let mut socket = TcpStream::connect_timeout(&addr, Duration::from_secs(4))?;
@@ -97,7 +115,9 @@ fn denied(port: u16, name: &str, payload: &[u8]) -> Result<(), String> {
     for _ in 0..5 {
         let (reply, closed) = transmit(port, payload)
             .map_err(|e| format!("{name}: raw transport: {e}"))?;
-        match classify(&statuses(&reply), closed)? {
+        let codes = checked_statuses(&reply)
+            .map_err(|e| format!("{name}: invalid HTTP response: {e}"))?;
+        match classify(&codes, closed)? {
             Classification::Denied => return Ok(()),
             Classification::RetryCapacity => thread::sleep(Duration::from_millis(30)),
         }
@@ -213,7 +233,7 @@ fn require_status(port: u16, payload: &[u8], code: u16) -> Result<Vec<u8>, Strin
         if !closed {
             return Err("baseline response lacked Connection: close".into());
         }
-        let found = statuses(&reply);
+        let found = checked_statuses(&reply)?;
         if found == [503] {
             thread::sleep(Duration::from_millis(40));
             continue;
@@ -296,7 +316,7 @@ fn start_server() -> Result<(Server, u16), String> {
             continue;
         }
         if let Ok((reply, closed)) = transmit(port, &health) {
-            if closed && statuses(&reply) == [200]
+            if closed && checked_statuses(&reply).ok().as_deref() == Some(&[200][..])
                 && response_body(&reply).ok().as_deref() == Some(b"{\"status\":\"ok\"}") {
                 return Ok((server, port));
             }
@@ -404,6 +424,15 @@ mod tests {
         assert!(classify(&[400, 400], true).is_err());
         assert!(classify(&[503, 400], true).is_err());
         assert!(classify(&[503], false).is_err());
+    }
+
+    #[test]
+    fn only_leading_crlf_status_line_can_count_as_http_evidence() {
+        assert!(checked_statuses(b"garbage\r\nHTTP/1.1 400 Bad\r\n\r\n").is_err());
+        assert!(checked_statuses(b"HTTP/1.1 400 Bad\n\n").is_err());
+        assert!(checked_statuses(b"HTTP/2 400\r\n\r\n").is_err());
+        assert_eq!(checked_statuses(b"HTTP/1.1 400 Bad\r\n\r\n").unwrap(), vec![400]);
+        assert!(checked_statuses(b"").unwrap().is_empty());
     }
 
     #[test]
