@@ -54,6 +54,20 @@ unchanged. Folded Content-Length must not be accepted as a valid length; a
 folded Transfer-Encoding must not be interpreted as plain chunked. None of
 these exceptions extend to unrelated malformed requests.
 An unexpected 200/201/204, 409, 500, a smuggled 200 or hung connection fails.
+The formerly named "bare LF framing" and "unsupported HTTP version"
+probes now test **read-only GET /health** interoperability instead: RFC 9112
+permits recognition of LF-only line endings, and RFC 9110 recommends
+same-major higher-minor fallback. They accept HTTP 200 **only if** the
+connection closes and the exact decoded body is `{"status":"ok"}`; they
+never authorize a mutating POST or general success to malformed input.
+
+The truncated Content-Length probe includes a valid `Content-Type:
+text/plain` so the actor actually attempts the body read. Strict malformed
+UTF-8 bodies must be classified as 400 at the Java HTTP request-body
+boundary, without misclassifying unrelated response failures. On the
+historic Java pin this requires an explicitly labeled compiler patch
+overlay; the original compiler SHA/tree cannot be called patched.
+
 This is a strict *target*, not a claim that the pinned runtime passes yet.
 
 ## Acceptance evidence before merging as a guest gate
