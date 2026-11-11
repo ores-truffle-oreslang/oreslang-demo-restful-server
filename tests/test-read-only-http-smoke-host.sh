@@ -16,7 +16,7 @@ while (($#)); do
     -D) headers="$2"; shift 2;;
     -o) body="$2"; shift 2;;
     -I) head_only=1; shift;;
-    -w|--connect-timeout|--max-time) shift 2;;
+    -w|--connect-timeout|--max-time|--noproxy|--proto) shift 2;;
     -sS) shift;;
     http://*) url="$1"; shift;;
     *) echo "unexpected fake curl arg: $1" >&2; exit 3;;
@@ -34,8 +34,20 @@ if [[ -n "$headers" ]]; then
   if [[ "${FAKE_MODE:-good}" != missing_id ]]; then
     id=$count
     if [[ "${FAKE_MODE:-good}" == duplicate ]]; then id=1; fi
-    printf 'X-Request-Id: 00000000-0000-0000-0000-%012d\r\n' "$id" >> "$headers"
+    request_id="$(printf '00000000-0000-0000-0000-%012d' "$id")"
+    if [[ "${FAKE_MODE:-good}" == malformed_id ]]; then request_id='------------------------------------'; fi
+    printf 'X-Request-Id: %s\r\n' "$request_id" >> "$headers"
+    if [[ "${FAKE_MODE:-good}" == duplicate_header ]]; then
+      printf 'X-Request-Id: %s\r\n' "$request_id" >> "$headers"
+    fi
+    trace="ores-trace-$request_id"
+    if [[ "${FAKE_MODE:-good}" == wrong_trace ]]; then trace='ores-trace-wrong'; fi
+    printf 'X-Ores-Trace-Id: %s\r\n' "$trace" >> "$headers"
   fi
+  actor=shared
+  if [[ "$url" != */health ]]; then actor=supervisor; fi
+  if [[ "${FAKE_MODE:-good}" == wrong_actor ]]; then actor=isolated; fi
+  printf 'X-Actor-Mode: %s\r\n' "$actor" >> "$headers"
   printf '\r\n' >> "$headers"
 fi
 if [[ -n "$body" && "$body" != /dev/null ]]; then
@@ -69,7 +81,11 @@ test_fail() {
 }
 test_good
 test_fail duplicate 'request identity reused'
-test_fail missing_id 'missing/invalid request identity'
+test_fail missing_id 'missing/duplicate request identity'
+test_fail duplicate_header 'missing/duplicate request identity'
+test_fail malformed_id 'missing/invalid request identity'
+test_fail wrong_trace 'trace/request identity mismatch'
+test_fail wrong_actor 'unexpected actor mode'
 test_fail bad_body 'health body mismatch'
 test_fail bad_head 'HEAD /health expected 200'
 test_fail bad_404 'missing route expected 404'
@@ -80,4 +96,4 @@ for invalid in http://localhost:3000 http://0.0.0.0:3000 https://127.0.0.1:3000 
     echo "invalid endpoint accepted: $invalid" >&2; exit 1
   fi
 done
-echo 'PASS host-only: 1 success, 5 response negatives, 7 URL rejects; no guest executed'
+echo 'PASS host-only: 1 success, 9 response negatives, 7 URL rejects; no guest executed'
