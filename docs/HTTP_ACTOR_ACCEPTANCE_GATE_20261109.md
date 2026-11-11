@@ -18,3 +18,14 @@ The opt-in Bash-only script restricts traffic to loopback, checks `SOURCE_REF` S
 4. Execute the unchanged guest with LLVM, Wasm, Forge and .NET AOT. Any unsupported backend must produce an executed compiler-owned negative diagnostic, not fabricated guest success. Pin source/compiler SHA and artifacts, actual stepful job logs and backend-specific runtime trace before declaring parity.
 
 Shared acceptance draft: https://github.com/ores-truffle-oreslang/oreslang-platform-conformance/pull/642. Runtime candidates: Java #656/#997/#1166, LLVM #654/#1019, and .NET #228. This documentation and probe make none of those test claims.
+
+## Hardening follow-up (2026-11-10)
+
+The live read-only script additionally enforces **six unique UUID-shaped request IDs**,
+corresponding `X-Ores-Trace-Id: ores-trace-<request_id>` headers, the
+expected `shared` actor on GET/HEAD versus `supervisor` on unrouted 404,
+and an exactly matching health JSON body. It refuses duplicate/missing
+headers, non-loopback targets, implicit HTTP proxies, or redirects.
+These are transport acceptance assertions, not proof of actor lowering.
+The separate Bash fake-curl tests are host-only tests of the probe itself.
+
