@@ -111,6 +111,13 @@ For PATCH, an already-valid 1 MiB resource plus a permitted 64 KiB incoming
 body can transiently stage up to 1 MiB + 64 KiB before the 413 response and
 stage cleanup. Real HTTP regression tests must verify the limit, chunked
 transfers, UTF-8 boundary, and unchanged persisted bytes after rejection.
+A handler that successfully installs the quota stage also attempts asynchronous
+cleanup if staging-size or stage-removal operations throw. This is best-effort
+cleanup, not a guarantee under process death or abrupt cancellation. Separate
+fault-injection guest runs are still required to prove deterministic reclamation.
+The single-request admission rule is per process; do not run multiple servers
+against one data directory.
+
 These source-level limits are **not** a claim of executed JDK25 guest integration
 or AOT/native backend parity.
 
@@ -149,6 +156,14 @@ compiles a native application launcher, and packages the pthread carrier library
 and license notices. It produces `dist/rest-server-aot-<os>-<arch>.tar.gz` (or
 `rest-server-hybrid-...`). Python, Maven, Java, Git and compiler source are build
 requirements only. The server in the resulting archive needs none of them.
+
+The native launcher regenerates the embedded guest config with the **same
+three public functions** as the interpreter-generated config: `port()`,
+`data_path()`, and `quota_staging_path()`. The previously missing third
+function would make the quota-enabled native distribution inconsistent with
+its guest handlers. `NativeConfigTest` runs in the host route-publication
+workflow without compiler access, but the actual native launcher/guest build
+still requires an executed authorized runtime and distribution check.
 
 After unpacking the matching platform archive:
 
