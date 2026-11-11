@@ -1,56 +1,60 @@
-# HTTP/1.1 adversarial acceptance (guest execution required)
+# HTTP/1.1 adversarial acceptance (real guest execution required)
 
-This change adds `tests/http_adversarial.py`, a black-box raw-socket probe
-against the **actual** demo compiler, Spin transport and AttoLang handlers.
-It does not substitute a fake server for compiler/runtime execution.
+The new **Rust-only, dependency-free** harness
+`tools/http-negative/src/main.rs` runs strict raw HTTP/1.1 tests against
+a disposable AttoLang/Spin server on loopback. It starts the actual demo
+runtime, writes one sentinel resource, verifies exact persisted bytes after
+each invalid request, and probes GET and /health for recovery.
 
-## Run in an authorized compiler environment
+## Host-only unit checks (safe in public CI)
 
-Prerequisites: JDK 25, Maven, pinned Git submodules and permission to fetch the
-private compiler and Spin repositories. This probe starts a temporary loopback
-server using the existing `tests.integration.Server` harness, installs a single
-disposable resource, and verifies its exact bytes after each malformed request.
-
-```bash
-./scripts/setup.sh
-python3 tests/http_adversarial.py
+```sh
+cargo test --offline --manifest-path tools/http-negative/Cargo.toml
 ```
 
-Optionally use a previously built native archive by setting
-`REST_SERVER_BINARY=/absolute/path/to/rest-server` (the same harness supports
-it). Run `python3 -m unittest discover -s tests -p
-'test_http_adversarial_host.py' -v` for **host-only harness self-tests**.
+These tests check the harness's wire framing, case uniqueness, response parser
+and fail-closed classifier. They **DO NOT** run the AttoLang compiler, Spin
+HTTP transport, actor handler, native image, or guest AOT backend.
 
-## Negative contract
+## Real guest execution (authorized development machine/runner)
 
-- Conflicting and identical duplicate Content-Length, conflicting
-  Content-Length/Transfer-Encoding, unsupported TE, invalid CL and chunk sizes
-- Bare LF and malformed headers (NUL, obs-fold), invalid UTF-8 text bodies
-- Truncated fixed-length bodies, over-budget declared and chunked bodies
-- Unsupported HTTP version and a smuggled second request attempt
-- No successful responses to malformed requests, no persisted mutation,
-  no server poisoning, and subsequent healthy GET/health responses
+Requires JDK 25, Maven and access to the private pinned Java compiler and
+Spin submodules. The harness creates its own data directory and loopback port;
+it never targets an external server.
 
-Each negative case must receive an explicit transport denial (400, 408, 413,
-414, 422, 431 or 505), or a clean closed connection with no response. A 503
-capacity rejection is inconclusive and retried. A 500, 409, 200, a smuggled
-second successful response or a silent hang is a failure. Time, response bytes
-and traffic are bounded; test traffic is loopback only.
+```sh
+./scripts/setup.sh
+cargo run --offline --manifest-path tools/http-negative/Cargo.toml -- --run
+```
 
-This is deliberately a **strict desired acceptance contract**, not a statement
-that the pinned implementation currently passes. If a case fails, triage the
-HTTP parser/compiler rather than relaxing the expectation or marking it
-unverified. A transport close without a response is accepted as fail-closed,
-but must be separately classified in receipts so a future policy can insist on
-a specific status code.
+To exercise a built native launcher instead, set
+`REST_SERVER_BINARY=/absolute/path/to/rest-server` before the cargo command.
+This changes the runtime under test; do not describe GraalVM native image as
+guest application AOT compilation.
 
-## Evidence required for promotion
+## Strict negative cases
 
-Record demo commit SHA, compiler SOURCE_REF and dependency submodule SHAs;
-execution mode (JVM interpreter, native runtime image, real guest AOT), OS,
-runner ID, test command, exit status, log artifact, and non-zero executed steps.
-Host-only `test_http_adversarial_host.py` proves the harness classifier only.
-The private compiler cannot be fetched by the public demo repo's ordinary
-cross-repository `GITHUB_TOKEN`; use only an authorized checkout or an
-approved secure runner. Do not export private source into a test organization
-without explicit authorization and verified provenance.
+- Conflicting and identical duplicate Content-Length; Content-Length plus
+  Transfer-Encoding; unsupported Transfer-Encoding, invalid Content-Length,
+  invalid chunk size
+- NUL and obsolete-folded headers, bare-LF header framing
+- Truncated fixed-length body, invalid UTF-8, declared and decoded chunked
+  bodies above 64 KiB
+- Unsupported HTTP version and attempted smuggled second request
+- After every denial, exact sentinel persistence, successful GET and /health
+
+The desired contract accepts only an explicit 400/408/413/414/422/431/505 or
+a fully closed transport without any response. A 503 is *inconclusive* (retry).
+An unexpected 200/201/204, 409, 500, a smuggled 200 or hung connection fails.
+This is a strict *target*, not a claim that the pinned runtime passes yet.
+
+## Acceptance evidence before merging as a guest gate
+
+For every executed run record demo commit SHA, compiler SHA in SOURCE_REF,
+dependency submodule SHAs, executable hash, OS, runner identity, command,
+exit status, logs and nonzero steps. Classify JVM interpreter/native launcher
+and truly compiled guest AOT separately. Mark unexecuted, skipped or zero-step
+runs `NOT_EXECUTED`. The compiler/Spin dependencies are private; public-demo
+Actions cannot assume cross-repository access. Never loosen the strict
+`ci/source-policy.sh` Python prohibition or export private sources without
+explicit destination authorization and identity verification.
