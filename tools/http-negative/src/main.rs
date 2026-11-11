@@ -252,12 +252,30 @@ fn start_server() -> Result<(Server, u16), String> {
     let nonce = SystemTime::now().duration_since(UNIX_EPOCH)
         .map_err(|e| e.to_string())?.as_nanos();
     let dir = env::temp_dir().join(format!("atto-http-negative-{}-{nonce}", std::process::id()));
+    // Failure receipts can include private compiler diagnostics. On Unix,
+    // create the directory 0700 atomically rather than relying on umask.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        let mut builder = fs::DirBuilder::new();
+        builder.mode(0o700);
+        builder.create(&dir).map_err(|e| e.to_string())?;
+    }
+    #[cfg(not(unix))]
     fs::create_dir(&dir).map_err(|e| e.to_string())?;
     let data = dir.join("data");
     fs::create_dir(&data).map_err(|e| e.to_string())?;
     let log = File::create(dir.join("server.log")).map_err(|e| e.to_string())?;
-    let entry = env::var_os("REST_SERVER_BINARY")
-        .map(PathBuf::from).unwrap_or_else(|| root.join("scripts/run-server.sh"));
+    let entry = match env::var_os("REST_SERVER_BINARY") {
+        Some(candidate) => {
+            let candidate = PathBuf::from(candidate);
+            if !candidate.is_absolute() {
+                return Err("REST_SERVER_BINARY must be an absolute path".into());
+            }
+            candidate.canonicalize().map_err(|e| format!("REST_SERVER_BINARY: {e}"))?
+        }
+        None => root.join("scripts/run-server.sh"),
+    };
     let child = Command::new(entry).current_dir(root).env("PORT", port.to_string())
         .env("DATA_DIR", &data).stdout(Stdio::from(log.try_clone().map_err(|e| e.to_string())?))
         .stderr(Stdio::from(log)).spawn().map_err(|e| e.to_string())?;
