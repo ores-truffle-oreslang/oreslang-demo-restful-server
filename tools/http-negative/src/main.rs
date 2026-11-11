@@ -111,13 +111,23 @@ fn classify(codes: &[u16], closed: bool) -> Result<Classification, String> {
     }
 }
 
+// RFC 9112 section 6.1 specifically recommends 501 for a transfer coding
+// the server does not understand. A 501 for any other malformed input remains
+// a failure; never add it to the general parser-denial status allowlist.
+fn classify_case(name: &str, codes: &[u16], closed: bool) -> Result<Classification, String> {
+    if name == "unsupported Transfer-Encoding" && codes == [501] && closed {
+        return Ok(Classification::Denied);
+    }
+    classify(codes, closed)
+}
+
 fn denied(port: u16, name: &str, payload: &[u8]) -> Result<(), String> {
     for _ in 0..5 {
         let (reply, closed) = transmit(port, payload)
             .map_err(|e| format!("{name}: raw transport: {e}"))?;
         let codes = checked_statuses(&reply)
             .map_err(|e| format!("{name}: invalid HTTP response: {e}"))?;
-        match classify(&codes, closed)? {
+        match classify_case(name, &codes, closed)? {
             Classification::Denied => return Ok(()),
             Classification::RetryCapacity => thread::sleep(Duration::from_millis(30)),
         }
@@ -401,6 +411,20 @@ mod tests {
                    vec![400, 200]);
         assert!(classify(&[400, 200], true).is_err());
     }
+    #[test]
+    fn only_unsupported_transfer_coding_may_return_501() {
+        assert_eq!(
+            classify_case("unsupported Transfer-Encoding", &[501], true),
+            Ok(Classification::Denied)
+        );
+        for name in ["invalid chunk size", "Content-Length plus Transfer-Encoding",
+                     "bare LF framing", "unsupported HTTP version"] {
+            assert!(classify_case(name, &[501], true).is_err(), "{name}");
+        }
+        assert!(classify_case("unsupported Transfer-Encoding", &[501], false).is_err());
+        assert!(classify_case("unsupported Transfer-Encoding", &[200], true).is_err());
+    }
+
     #[test]
     fn capacity_is_never_parser_evidence() {
         assert_eq!(classify(&[503], true), Ok(Classification::RetryCapacity));
