@@ -51,8 +51,8 @@ jobs:
           java -cp .cache/archive-test dev.oreslang.demo.EmbeddedAppArchiveTest
       - name: Check route source publication
         run: python3 -m unittest discover -s tests -p test_route_publication.py -v
-      - name: Check read-only smoke script harness (synthetic HTTP, host only)
-        run: python3 -m unittest discover -s tests -p test_read_only_http_smoke_host.py -v
+      - name: Check read-only smoke script harness (fake curl, host only)
+        run: bash tests/test-read-only-http-smoke-host.sh
       - name: Check capability-input guards are present
         run: |
           grep -Fq 'PORT must be a decimal integer in 1..65535.' scripts/run-server.sh
