@@ -115,7 +115,14 @@ fn classify(codes: &[u16], closed: bool) -> Result<Classification, String> {
 // the server does not understand. A 501 for any other malformed input remains
 // a failure; never add it to the general parser-denial status allowlist.
 fn classify_case(name: &str, codes: &[u16], closed: bool) -> Result<Classification, String> {
-    if name == "unsupported Transfer-Encoding" && codes == [501] && closed {
+    if closed && codes == [501]
+        && matches!(name, "unsupported Transfer-Encoding" | "obs-fold Transfer-Encoding") {
+        return Ok(Classification::Denied);
+    }
+    // JDK HttpServer unfolds obs-fold before userland. RFC 9112 permits
+    // unfolding; an invalid folded Content-Type must not be truncated into a
+    // valid 'text/plain' value and must not be dispatched as a write.
+    if name == "obs-fold Content-Type" && codes == [415] && closed {
         return Ok(Classification::Denied);
     }
     classify(codes, closed)
@@ -153,7 +160,13 @@ fn cases() -> Vec<(&'static str, Vec<u8>)> {
     push!("negative Content-Length", b"Content-Length: -1\r\n", b"xyz");
     push!("invalid chunk size", b"Transfer-Encoding: chunked\r\n", b"Z\r\nabc\r\n0\r\n\r\n");
     push!("header contains NUL", b"X-Test: a\0b\r\nContent-Length: 3\r\n", b"abc");
-    push!("obs-fold header", b"X-Test: a\r\n folded\r\nContent-Length: 3\r\n", b"abc");
+    push!("obs-fold Content-Type",
+          b"Content-Type: text/plain\r\n folded\r\nContent-Length: 3\r\n", b"abc");
+    push!("obs-fold Content-Length",
+          b"Content-Type: text/plain\r\nContent-Length: 3\r\n 4\r\n", b"abc");
+    push!("obs-fold Transfer-Encoding",
+          b"Content-Type: text/plain\r\nTransfer-Encoding: chunked\r\n evil\r\n",
+          b"0\r\n\r\n");
     result.push(("bare LF framing",
         b"POST /foo/bar/baz HTTP/1.1\nHost: 127.0.0.1\nConnection: close\nContent-Type: text/plain\nContent-Length: 3\n\nabc".to_vec()));
     push!("truncated fixed-length body", b"Content-Length: 12\r\n", b"abc");
@@ -348,8 +361,14 @@ fn run() -> Result<(), String> {
     let original = fs::read(&resource).map_err(|e| e.to_string())?;
     if original != SENTINEL { return Err("initial persisted sentinel differs".into()); }
     let mut count = 0;
+    let mut rejected_contracts = Vec::new();
     for (name, payload) in cases() {
-        denied(port, name, &payload)?;
+        if let Err(error) = denied(port, name, &payload) {
+            eprintln!("NOT_VERIFIED {name}: {error}");
+            rejected_contracts.push(format!("{name}: {error}"));
+        } else {
+            count += 1;
+        }
         if fs::read(&resource).map_err(|e| e.to_string())? != original {
             return Err(format!("{name}: rejected input mutated persisted bytes"));
         }
@@ -361,8 +380,11 @@ fn run() -> Result<(), String> {
         if response_body(&health)? != b"{\"status\":\"ok\"}" {
             return Err(format!("{name}: health response changed after negative request"));
         }
-        count += 1;
-        println!("PASS {name}: rejected, unchanged persisted bytes, healthy follow-up");
+        println!("CHECK {name}: unchanged persisted bytes, healthy follow-up");
+    }
+    if !rejected_contracts.is_empty() {
+        return Err(format!("{} / {} strict cases failed: {}",
+            rejected_contracts.len(), cases().len(), rejected_contracts.join("; ")));
     }
     Ok(count)
     })();
@@ -423,6 +445,12 @@ mod tests {
         }
         assert!(classify_case("unsupported Transfer-Encoding", &[501], false).is_err());
         assert!(classify_case("unsupported Transfer-Encoding", &[200], true).is_err());
+        assert_eq!(classify_case("obs-fold Transfer-Encoding", &[501], true),
+                   Ok(Classification::Denied));
+        assert_eq!(classify_case("obs-fold Content-Type", &[415], true),
+                   Ok(Classification::Denied));
+        assert!(classify_case("obs-fold Content-Length", &[415], true).is_err());
+        assert!(classify_case("obs-fold Content-Type", &[415], false).is_err());
     }
 
     #[test]
