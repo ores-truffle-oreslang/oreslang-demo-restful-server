@@ -33,7 +33,10 @@ class RoutePublication(unittest.TestCase):
         self.assertEqual(target.read_text(),'preserve me')
         self.assertFalse((generated/'routes.ores').is_symlink())
         self.assertIn('GET /health',(generated/'routes.ores').read_text())
-        self.assertIn('3000',(generated/'config.ores').read_text())
+        config = (generated/'config.ores').read_text()
+        self.assertIn('3000', config)
+        self.assertIn('quota_staging_path', config)
+        self.assertIn('.baz.quota-stage.txt', config)
 
     def test_failed_replace_preserves_previous_output_and_cleans_temporary(self):
         destination = self.root/'routes.ores'
