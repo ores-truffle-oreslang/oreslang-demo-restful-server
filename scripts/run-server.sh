@@ -34,7 +34,7 @@ if [[ "$data_dir" == *","* ]]; then
   exit 64
 fi
 
-python3 "$root/scripts/generate-routes.py" --port "$port" --data-dir "$data_dir"
+bash "$root/scripts/generate-routes.sh" --port "$port" --data-dir "$data_dir"
 cd "$root"
 exec bash "$root/dependencies/spin/scripts/compiler.sh" --platform=server \
   --allow-net="127.0.0.1:$port" --allow-read="$data_dir" --allow-write="$data_dir" "$@" "$root/src/main.ores"

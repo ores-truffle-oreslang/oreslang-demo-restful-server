@@ -1,0 +1,67 @@
+name: Rust route publisher host tests and exact-byte parity
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  rust-route-publisher:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Pin PR head and validate shell
+        shell: bash
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          git diff --quiet
+          git diff --cached --quiet
+          bash -n scripts/generate-routes.sh
+          bash -n scripts/integration-rust.sh
+          bash -n scripts/verify-native-release.sh
+          set +e
+          env -u JAVA_HOME -u ORESLANG_SOURCE_DIR bash scripts/verify-native-release.sh aot > "$RUNNER_TEMP/missing-native-proof.log" 2>&1
+          missing_status=$?
+          set -e
+          test "$missing_status" -ne 0
+          ! grep -Fq REST_NATIVE_FULL_GUEST_PASS "$RUNNER_TEMP/missing-native-proof.log"
+          echo 'FULL_NATIVE_FAIL_CLOSED_PASS: no compiler/GraalVM available, no false success'
+          bash -n scripts/run-server.sh
+          bash -n scripts/build-native.sh
+          grep -Fq 'bash "$root/scripts/generate-routes.sh" --port "$port" --data-dir "$data_dir"' scripts/run-server.sh
+          grep -Fq 'bash "$root/scripts/generate-routes.sh"' scripts/build-native.sh
+          ! grep -Fq 'python3 "$root/scripts/generate-routes.py"' scripts/run-server.sh
+          ! grep -Fq 'python3 "$root/scripts/generate-routes.py"' scripts/build-native.sh
+      - name: Compile and execute Rust route generator adversarial tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --offline --locked --manifest-path tools/route-gen/Cargo.toml
+      - name: Compile and execute Rust HTTP integration driver host tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --locked --manifest-path tools/profile/Cargo.toml --bin integration
+          echo 'NOT_EXECUTED: real native HTTP integration requires an explicit REST_SERVER_BINARY and guest compiler'
+      - name: Compare Rust routes and config against original Python oracle byte-for-byte
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          trap 'rm -rf -- "$tmp"' EXIT
+          data_dir="$PWD/.cache/route-gen-parity-data"
+          python3 scripts/generate-routes.py --port 3217 --data-dir "$data_dir"
+          cp src/generated/routes.ores "$tmp/routes.ores"
+          cp src/generated/config.ores "$tmp/config.ores"
+          bash scripts/generate-routes.sh --port 3217 --data-dir "$data_dir"
+          cmp "$tmp/routes.ores" src/generated/routes.ores
+          cmp "$tmp/config.ores" src/generated/config.ores
+          printf 'RUST_ROUTE_PARITY_PASS: both generated source files exactly match existing Python oracle\n'
+          printf 'HOST_ONLY: no native guest/compiler or AOT execution performed\n'

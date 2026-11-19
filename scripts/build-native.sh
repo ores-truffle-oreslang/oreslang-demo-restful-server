@@ -22,7 +22,7 @@ classes="$build/classes"
 mkdir -p "$classes"
 # Freeze the discovered route registry and embed only Ores sources. Runtime
 # configuration is replaced inside a per-process extracted bundle by native code.
-python3 "$root/scripts/generate-routes.py"
+bash "$root/scripts/generate-routes.sh"
 python3 - "$root" "$classes/ores-app.zip" <<'PY'
 from pathlib import Path
 import sys, zipfile

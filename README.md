@@ -72,7 +72,7 @@ Each method file declares its own `Handler` actor and exports
 that actor's declaring source unit. Copy an existing method file to add a route;
 no central route list needs editing. Root-level `get.ores` maps to `/`.
 
-At startup, `scripts/generate-routes.py` scans the tree and emits imports and
+At startup, `scripts/generate-routes.sh` invokes a bounded, dependency-free Rust generator that scans the tree and emits imports and
 registrations into ignored `src/generated/routes.ores`. It supports `get`, `post`,
 `put`, `patch`, `delete`, `head`, and `options`; rejects unknown method files and
 symlinked/out-of-root route sources; and restricts directory names to literal
@@ -379,3 +379,7 @@ not continuously.
 `./scripts/profile-core.sh` now runs the Rust profiler and requires Cargo. It performs six ten-request rounds per mode, excludes the first round from warm statistics, verifies 60 unique completed OTel request spans in each mode, and requires enabled core stdout/lifetime phases and debug records after SIGTERM. Baseline diagnostics must remain absent. Invalid/missing timing rows and malformed structured records fail the run. It binds a temporary loopback port and retains raw client logs, server logs, warm samples, runtime/revision information and JSON summaries in `.cache/profile-rust-*`. Existing `JAVA_HOME`, `ORES_JAVA` and `ORESLANG_SOURCE_DIR` select the exact pinned compiler.
 
 Run `cargo test --locked --manifest-path tools/profile/Cargo.toml` for percentile and malformed-sample checks. Client times describe the final curl attempt and exclude earlier admission retries and sleeps; overlapping core phases must not be summed. This compares diagnostic modes with userland telemetry enabled in both.
+
+### Route generator Rust migration
+
+Startup and native packaging now call `scripts/generate-routes.sh` instead of the Python generator. The existing Python implementation and its regression tests remain as a byte-for-byte oracle until their comprehensive host tests have been migrated. Run `cargo test --offline --locked --manifest-path tools/route-gen/Cargo.toml` for Rust route admission and publication tests. See `docs/RUST_ROUTE_GENERATOR.md` for evidence boundaries. Rust/Cargo is required to start or package the demo; other native-build packaging tasks still need Python. Legacy `.ores` route files remain pinned compiler compatibility inputs, not a claim of `.atto` runtime parity.
