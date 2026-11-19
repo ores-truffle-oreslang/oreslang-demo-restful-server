@@ -17,7 +17,7 @@ HTTP exchange.
 
 ## Run
 
-Prerequisites: **JDK 25**, Maven, Git, Python 3.9+, curl, and GitHub access to the
+Prerequisites: **JDK 25**, Maven, Git, Cargo/Rust, Python 3.9+ (remaining legacy tests and build tools), curl, and GitHub access to the
 Oreslang dependencies. Set `JAVA_HOME` to your JDK 25 installation. The startup
 script uses its Java binary, or `ORES_JAVA` if explicitly set.
 
@@ -276,7 +276,7 @@ curl --max-time 10 -sS -o /dev/null \
   -w 'status=%{http_code} connect=%{time_connect}s first_byte=%{time_starttransfer}s total=%{time_total}s\n' \
   http://127.0.0.1:3000/health
 ./scripts/curl-10.sh
-python3 scripts/benchmark.py --runs 6
+bash scripts/benchmark.sh --runs 6
 ```
 
 The benchmark runs six ten-request sequences (first is warm-up), then 20 health
@@ -339,7 +339,7 @@ instrumentation overhead, not the cost of enabling all telemetry. In terminal 1:
 ./scripts/run-server.sh --no-core-perf --no-core-debug 2>&1 | tee .cache/baseline.log
 ```
 
-In terminal 2 run `python3 scripts/benchmark.py --runs 6`, save the JSON
+In terminal 2 run `bash scripts/benchmark.sh --runs 6`, save the JSON
 result and stop the server. Then restart terminal 1 with:
 
 ```sh
@@ -379,3 +379,7 @@ not continuously.
 `./scripts/profile-core.sh` now runs the Rust profiler and requires Cargo. It performs six ten-request rounds per mode, excludes the first round from warm statistics, verifies 60 unique completed OTel request spans in each mode, and requires enabled core stdout/lifetime phases and debug records after SIGTERM. Baseline diagnostics must remain absent. Invalid/missing timing rows and malformed structured records fail the run. It binds a temporary loopback port and retains raw client logs, server logs, warm samples, runtime/revision information and JSON summaries in `.cache/profile-rust-*`. Existing `JAVA_HOME`, `ORES_JAVA` and `ORESLANG_SOURCE_DIR` select the exact pinned compiler.
 
 Run `cargo test --locked --manifest-path tools/profile/Cargo.toml` for percentile and malformed-sample checks. Client times describe the final curl attempt and exclude earlier admission retries and sleeps; overlapping core phases must not be summed. This compares diagnostic modes with userland telemetry enabled in both.
+
+## Rust tooling migration status
+
+`bash scripts/benchmark.sh --runs 6` uses `tools/profile/src/bin/benchmark.rs` instead of the removed Python benchmark. It retains the JSON timing fields, rejects malformed/duplicate request receipts, and refuses non-loopback targets because the workload mutates and deletes demo state. `cargo test --locked --manifest-path tools/profile/Cargo.toml --bin benchmark` exercises the host parser; it **does not run a compiled AttoLang guest**. Route generation, some integration and native distribution scripts, and embedded native archive packaging still use Python and remain explicit migration work. The runtime demo's `.ores` sources remain legacy compatibility inputs, not a `.atto` parity claim.

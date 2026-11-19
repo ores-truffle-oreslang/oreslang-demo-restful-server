@@ -30,7 +30,7 @@ while IFS= read -r -d '' path; do
   allowed=0
   if [[ "$mode" == rest-legacy ]]; then
     case "$path" in
-      scripts/benchmark.py|scripts/generate-routes.py|tests/core_diagnostics.py|tests/integration.py|tests/native_distribution.py|tests/test_route_publication.py)
+      scripts/generate-routes.py|tests/core_diagnostics.py|tests/integration.py|tests/native_distribution.py|tests/test_route_publication.py)
         allowed=1
         printf 'LEGACY_PYTHON_NONCOMPLIANT existing_path=%s\n' "$path"
         ;;

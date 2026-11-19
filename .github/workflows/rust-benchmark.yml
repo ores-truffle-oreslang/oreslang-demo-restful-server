@@ -1,0 +1,35 @@
+name: Rust REST benchmark host checks
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  rust-benchmark-host:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Assert exact head and clean index
+        shell: bash
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          git diff --quiet
+          git diff --cached --quiet
+      - name: Rust host unit tests (no guest execution)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo --version
+          rustc --version
+          cargo test --locked --manifest-path tools/profile/Cargo.toml --bin benchmark
+          bash -n scripts/benchmark.sh
+          printf 'HOST_ONLY: Rust timing parser and destination guard validated\n'
+          printf 'NOT_EXECUTED: Atto guest, pinned compiler, native AOT and backend parity\n'

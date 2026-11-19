@@ -30,7 +30,7 @@ jobs:
           mapfile -d '' -t files < <(git ls-files -z -- '*.py' '*.pyi' '*.ipynb')
           for file in "${files[@]}"; do
             case "$file" in
-              scripts/benchmark.py | scripts/generate-routes.py | tests/core_diagnostics.py | tests/integration.py | tests/native_distribution.py | tests/test_route_publication.py)
+              scripts/generate-routes.py | tests/core_diagnostics.py | tests/integration.py | tests/native_distribution.py | tests/test_route_publication.py)
                 printf 'LEGACY_PYTHON_NONCOMPLIANT existing_path=%s\n' "$file"
                 ;;
               *)
