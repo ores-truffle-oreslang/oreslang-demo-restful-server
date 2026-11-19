@@ -1,0 +1,7 @@
+// Native AttoLang scalar REST-status admission canary, NOT an HTTP server.
+// Exit code must be 42 after compiling/actually executing a linked binary.
+pub fnc main(): int {
+    return status_health() + status_created() - 359;
+}
+fnc status_health(): int { return 200; }
+fnc status_created(): int { return 201; }

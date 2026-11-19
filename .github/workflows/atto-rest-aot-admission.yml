@@ -1,0 +1,30 @@
+name: Atto native REST AOT admission source and harness integrity
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  admission-inputs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Check exact HEAD and native harness inputs
+        shell: bash
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          git diff --quiet
+          git diff --cached --quiet
+          bash -n ci/test-atto-rest-aot.sh
+          test "$(grep -c '^pub fnc main(): int' tests/guest/rest_status_scalar.atto)" -eq 1
+          test "$(grep -c '^pub async routine main(): void' tests/guest/rest_http_actor_unimplemented.atto)" -eq 1
+          grep -Fq 'ATTO_NATIVE_AOT_SCALAR_PASS' ci/test-atto-rest-aot.sh
+          echo 'HOST_ONLY: source/harness verified; native compiler proof requires authorized exact-tree runner'
+          echo 'NOT_EXECUTED: no native guest, HTTP, actor, or AOT run in this job'

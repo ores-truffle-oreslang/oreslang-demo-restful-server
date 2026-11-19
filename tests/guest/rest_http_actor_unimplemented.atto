@@ -1,0 +1,10 @@
+// Negative native admission: full async HTTP/actor guest support is not proven.
+// The narrow Rust and LLVM scalar compilers MUST reject, never generate an executable.
+pub async routine main(): void {
+    val server = http.listen("127.0.0.1", 3000, 1, 65536, 10000);
+    loop {
+        val request = await server.accept();
+        request.respond(200, "text/plain", "ok");
+    }
+    return;
+}
